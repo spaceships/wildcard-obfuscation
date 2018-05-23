@@ -5,7 +5,7 @@ n = 100
 #  p = 97
 #  p = random_prime(2**129, lbound=2**128)
 
-q = 99347
+q = 2**80
 p = 2*q + 1
 
 while not is_prime(p) or not is_prime(q):
@@ -35,7 +35,7 @@ def f(x):
     val = 0
     for i in range(n-1):
         val += F[i] * x**(i+1)
-    return p
+    return val
 
 pat = [0] * (n - 1) + ['*']
 x   = [0] * (n - 1) + [1]
@@ -62,7 +62,7 @@ for i in range(n):
             h[i].append(G(r))
             hp[i].append(r)
 
-print "h =", h
+#  print "h =", h
 #  print "hp =", hp
 print "x =", x
 
@@ -80,7 +80,7 @@ val = G(1)
 valp = 0
 for i in range(n):
     l = c(i,x)
-    print "l={}".format(l)
+    #  print "l={}".format(l)
     val *= h[i][x[i]] ** (l.numer() * inverse_mod(l.denom(), q))
 
     valp += hp[i][x[i]] * c(i,x)

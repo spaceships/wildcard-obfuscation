@@ -1,16 +1,6 @@
 use gmp::mpz::{Mpz, ProbabPrimeResult};
 use rand::Rng;
 
-pub fn rand_mpz_prime<R: Rng>(rng: &mut R, n: usize) -> Mpz {
-    let r = rand_mpz_range(rng, &Mpz::from(2).pow(n as u32), &Mpz::from(2).pow(n as u32 + 1));
-    let p = r.nextprime();
-    match p.probab_prime(100000) {
-        ProbabPrimeResult::Prime => p,
-        ProbabPrimeResult::ProbablyPrime => p,
-        ProbabPrimeResult::NotPrime => rand_mpz_prime(rng, n),
-    }
-}
-
 pub fn rand_mpz<R: Rng>(rng: &mut R, n: usize) -> Mpz {
     let bs: Vec<u8> = (0..n/8+1).map(|i| {
         if i==n/8 {
@@ -39,3 +29,25 @@ pub fn rand_mpz_mod_vec<R: Rng>(rng: &mut R, q: &Mpz, n: usize) -> Vec<Mpz> {
     (0..n).map(|_| rand_mpz_mod(rng, q)).collect()
 }
 
+pub fn rand_mpz_prime<R: Rng>(rng: &mut R, n: usize) -> Mpz {
+    let r = rand_mpz_range(rng, &Mpz::from(2).pow(n as u32), &Mpz::from(2).pow(n as u32 + 1));
+    r.nextprime()
+}
+
+pub fn is_prime(x: &Mpz) -> bool {
+    match x.probab_prime(128) {
+        ProbabPrimeResult::Prime => true,
+        ProbabPrimeResult::ProbablyPrime => true,
+        ProbabPrimeResult::NotPrime => false,
+    }
+}
+
+pub fn mpz_strong_prime(n: usize) -> (Mpz, Mpz) {
+    let mut q = Mpz::from(1) << n;
+    let mut p = Mpz::from(2) * &q + Mpz::from(1);
+    while !is_prime(&p) || !is_prime(&q) {
+        q = q.nextprime();
+        p = Mpz::from(2) * &q + Mpz::from(1);
+    }
+    (p, q)
+}
