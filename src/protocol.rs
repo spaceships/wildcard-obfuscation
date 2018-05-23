@@ -4,6 +4,8 @@ use gmp::mpz::Mpz;
 use rand;
 use std;
 use num::rational::Ratio;
+use std::io::{Read, Write, BufWriter};
+use std::fs::File;
 
 pub struct WildcardObfuscation {
     p: Mpz,             // prime modulus
@@ -78,6 +80,43 @@ impl WildcardObfuscation {
 
         (t == Mpz::from(1)) as usize
     }
+
+    pub fn to_file(&self, filename: &str) {
+        let file = File::create(filename).expect("could not create file!");
+        let mut buf = BufWriter::new(file);
+        self.write(&mut buf);
+    }
+
+    pub fn write<W: Write>(&self, f: &mut W) {
+        writeln!(f, "{}\n{}\n{}", self.h.len(), self.p, self.q).unwrap();
+        for i in 0..self.h.len() {
+            for j in 0..2 {
+                writeln!(f, "{}", self.h[i][j]).unwrap();
+            }
+        }
+    }
+
+    pub fn from_file(filename: &str) -> Self {
+        let mut file = File::open(filename).expect("Unable to open the file");
+        let mut contents = String::new();
+        file.read_to_string(&mut contents).expect("Unable to read the file");
+        Self::read(&contents)
+    }
+
+    pub fn read(contents: &str) -> Self {
+        let mut lines = contents.lines();
+        let n: usize = lines.next().expect("expected a line!").parse().expect("expected line 1 to be a number in base 10!");
+        let p: Mpz = Mpz::from_str_radix(lines.next().expect("expected a line!"), 10).expect("expected line 2 to be p in base 10!");
+        let q: Mpz = Mpz::from_str_radix(lines.next().expect("expected a line!"), 10).expect("expected line 3 to be q in base 10!");
+        let mut h = vec![[Mpz::from(0), Mpz::from(0)]; n];
+        for i in 0..n {
+            for j in 0..2 {
+                h[i][j] = Mpz::from_str_radix(lines.next().expect("expected a line!"), 10).expect("expected line to be base 10!");
+            }
+        }
+        assert_eq!(lines.next(), Option::None);
+        WildcardObfuscation { p, q, h }
+    }
 }
 
 fn lagrange_coef(i: usize, x: &[usize]) -> Ratio<i32> {
@@ -99,4 +138,3 @@ fn poly_eval(coefs: &Vec<Mpz>, x: &Mpz) -> Mpz {
     }
     y
 }
-
