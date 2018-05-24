@@ -5,6 +5,7 @@ use wildcard::protocol::WildcardObfuscation;
 
 use std::io::Read;
 use clap::{Arg, App, SubCommand, AppSettings};
+use std::process::exit;
 
 fn main() {
 
@@ -77,7 +78,10 @@ fn obf_main(pat_inp: &str, output_file: &str, secparam: usize) {
     for c in pat.chars() {
         match c {
             '0' | '1' | '*' => {}
-            _ => panic!("unknown pattern character \"{}\"!", c),
+            _ => {
+                eprintln!("Error: unknown pattern character \"{}\"!", c);
+                exit(1);
+            }
         }
     }
 
@@ -91,7 +95,10 @@ fn eval_main(obf_file: &str, inp: &str) {
     for c in inp.chars() {
         match c {
             '0' | '1' => {}
-            _ => panic!("unknown input character \"{}\"!", c),
+            _ => {
+                eprintln!("Error: unknown input character \"{}\"!", c);
+                exit(1);
+            }
         }
     }
 
