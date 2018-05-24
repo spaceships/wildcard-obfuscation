@@ -3,7 +3,6 @@ use rand_mpz::*;
 use gmp::mpz::Mpz;
 use rand;
 use std;
-use num::rational::Ratio;
 use std::io::{Read, Write, BufWriter};
 use std::fs::File;
 
@@ -19,7 +18,6 @@ pub fn point(i: usize, j: usize) -> i32 {
 
 impl WildcardObfuscation {
 
-    // pub fn encode<R: Rng>(rng: &mut R, g: &Mpz, p: &Mpz, f: &Vec<Mpz>, pat: &Vec<usize>) -> Vec<[Mpz; 2]> {
     pub fn encode(pat: &str, secparam: usize) -> Self {
         let n = pat.len();
 
@@ -65,14 +63,17 @@ impl WildcardObfuscation {
     }
 
     pub fn eval(&self, inp: &str) -> usize {
-        assert_eq!(inp.len(), self.h.len(), "error: expected {}-bit input, but got {} bits!", self.h.len(), inp.len());
-        let x: Vec<usize> = inp.chars().map(|c| c.to_digit(2).expect("binary digit") as usize).collect();
+        assert_eq!(inp.len(), self.h.len(),
+            "error: expected {}-bit input, but got {} bits!", self.h.len(), inp.len());
+
+        let x: Vec<usize> = inp.chars().map(|c| {
+            c.to_digit(2).expect("expected a binary digit!") as usize
+        }).collect();
 
         let mut t = Mpz::from(1);
         for i in 0..inp.len() {
-            let c = lagrange_coef(i, &x); // this is a rational
-            // convert the rational to the exponent group using q
-            let exp = Mpz::from(*c.numer()) * Mpz::from(*c.denom()).invert(&self.q).unwrap() % &self.q;
+            // compute lagrange coeficient in the exponent group
+            let exp = lagrange_coef(i, &x, &self.q);
             let val = self.h[i][x[i]].powm(&exp, &self.p);
             t *= val;
             t %= &self.p;
@@ -80,7 +81,33 @@ impl WildcardObfuscation {
 
         (t == Mpz::from(1)) as usize
     }
+}
 
+fn lagrange_coef(i: usize, x: &[usize], q: &Mpz) -> Mpz {
+    let mut prod = Mpz::from(1);
+    for j in 0..x.len() {
+        if i == j { continue }
+        let pi = Mpz::from(point(i, x[i]));
+        let pj = Mpz::from(point(j, x[j]));
+        prod *= (-&pj) * (&pi - &pj).invert(q).expect("couldn't invert!") % q;
+        prod %= q;
+    }
+    prod
+}
+
+fn poly_eval(coefs: &Vec<Mpz>, x: &Mpz) -> Mpz {
+    let mut y = Mpz::from(0);
+    for i in 0..coefs.len() {
+        if x == &Mpz::from(0) { continue }
+        y += &coefs[i] * x.pow(i as u32 + 1)
+    }
+    y
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// serialization
+
+impl WildcardObfuscation {
     pub fn to_file(&self, filename: &str) {
         let file = File::create(filename).expect("could not create file!");
         let mut buf = BufWriter::new(file);
@@ -105,36 +132,20 @@ impl WildcardObfuscation {
 
     pub fn read(contents: &str) -> Self {
         let mut lines = contents.lines();
-        let n: usize = lines.next().expect("expected a line!").parse().expect("expected line 1 to be a number in base 10!");
-        let p: Mpz = Mpz::from_str_radix(lines.next().expect("expected a line!"), 10).expect("expected line 2 to be p in base 10!");
-        let q: Mpz = Mpz::from_str_radix(lines.next().expect("expected a line!"), 10).expect("expected line 3 to be q in base 10!");
+        let n: usize = lines.next().expect("expected a line!")
+            .parse().expect("expected line 1 to be a number in base 10!");
+        let p: Mpz = Mpz::from_str_radix(lines.next().expect("expected a line!"), 10)
+            .expect("expected line 2 to be p in base 10!");
+        let q: Mpz = Mpz::from_str_radix(lines.next().expect("expected a line!"), 10)
+            .expect("expected line 3 to be q in base 10!");
         let mut h = vec![[Mpz::from(0), Mpz::from(0)]; n];
         for i in 0..n {
             for j in 0..2 {
-                h[i][j] = Mpz::from_str_radix(lines.next().expect("expected a line!"), 10).expect("expected line to be base 10!");
+                h[i][j] = Mpz::from_str_radix(lines.next().expect("expected a line!"), 10)
+                    .expect("expected line to be base 10!");
             }
         }
         assert_eq!(lines.next(), Option::None);
         WildcardObfuscation { p, q, h }
     }
-}
-
-fn lagrange_coef(i: usize, x: &[usize]) -> Ratio<i32> {
-    let mut prod = Ratio::from_integer(1);
-    for j in 0..x.len() {
-        if i == j { continue }
-        let pi = point(i, x[i]);
-        let pj = point(j, x[j]);
-        prod *= Ratio::new(-pj, pi - pj);
-    }
-    prod
-}
-
-fn poly_eval(coefs: &Vec<Mpz>, x: &Mpz) -> Mpz {
-    let mut y = Mpz::from(0);
-    for i in 0..coefs.len() {
-        if x == &Mpz::from(0) { continue }
-        y += &coefs[i] * x.pow(i as u32 + 1)
-    }
-    y
 }

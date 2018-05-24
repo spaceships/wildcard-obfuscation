@@ -2,3 +2,4 @@ Cargo.lock
 target
 *.sage.py
 .tags
+wildcard.obf

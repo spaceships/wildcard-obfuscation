@@ -1,16 +1,10 @@
-extern crate gmp;
-extern crate rand;
-extern crate num;
 extern crate clap;
+extern crate wildcard;
 
-pub mod protocol;
-pub mod rand_mpz;
-
-use protocol::WildcardObfuscation;
+use wildcard::protocol::WildcardObfuscation;
 
 use std::io::Read;
 use clap::{Arg, App, SubCommand, AppSettings};
-
 
 fn main() {
 
