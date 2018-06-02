@@ -16,36 +16,36 @@ pub fn point(i: usize, j: usize) -> i32 {
     2*(i as i32 + 1) + j as i32
 }
 
+pub fn get_primes(secparam: usize) -> (Mpz, Mpz) {
+    match secparam {
+        1024 => (
+            Mpz::from_str_radix("3595386269724631815458610381578049467235953957884613\
+                145468601623154653516110019262654169546448150720422402277597427867153\
+                175795376288332449856948612789482487555357868497309705526044392024921\
+                882389061659041700115376763013646849257629478262210816544743267010213\
+                69172596479894491876959432609670712659248449113067", 10).unwrap(),
+            Mpz::from_str_radix("1797693134862315907729305190789024733617976978942306\
+                572734300811577326758055009631327084773224075360211201138798713933576\
+                587897688144166224928474306394741243777678934248654852763022196012460\
+                941194530829520850057688381506823424628814739131105408272371633505106\
+                84586298239947245938479716304835356329624224556533", 10).unwrap(),
+        ),
+
+        _ => {
+            eprint!("generating {}-bit prime...", secparam);
+            let (p, q) = mpz_strong_prime(secparam);
+            eprintln!("p={} q={}", p, q);
+            (p, q)
+        }
+    }
+}
+
 impl WildcardObfuscation {
 
     pub fn encode(pat: &str, secparam: usize) -> Self {
         let n = pat.len();
-
         let ref mut rng = rand::thread_rng();
-
-        // we precompute some primes for benchmarking
-        let (p, q) = match secparam {
-            1024 => (
-                Mpz::from_str_radix("3595386269724631815458610381578049467235953957884613\
-                    145468601623154653516110019262654169546448150720422402277597427867153\
-                    175795376288332449856948612789482487555357868497309705526044392024921\
-                    882389061659041700115376763013646849257629478262210816544743267010213\
-                    69172596479894491876959432609670712659248449113067", 10).unwrap(),
-                Mpz::from_str_radix("1797693134862315907729305190789024733617976978942306\
-                    572734300811577326758055009631327084773224075360211201138798713933576\
-                    587897688144166224928474306394741243777678934248654852763022196012460\
-                    941194530829520850057688381506823424628814739131105408272371633505106\
-                    84586298239947245938479716304835356329624224556533", 10).unwrap(),
-            ),
-
-            _ => {
-                eprint!("generating {}-bit prime...", secparam);
-                let (p, q) = mpz_strong_prime(secparam);
-                eprintln!("p={} q={}", p, q);
-                (p, q)
-            }
-        };
-
+        let (p,q) = get_primes(secparam);
         let g = Mpz::from(2);
 
         // generate the random polynomial F with F(0) = 0
@@ -55,7 +55,6 @@ impl WildcardObfuscation {
         let mut h = Vec::with_capacity(pat.len());
         for (i, elem) in pat.chars().enumerate() {
             h.push([Mpz::from(0), Mpz::from(0)]);
-
             for &j in [0,1].iter() {
                 let j_as_char = std::char::from_digit(j as u32, 10).unwrap();
 
@@ -67,8 +66,60 @@ impl WildcardObfuscation {
                 }
             }
         }
-
         WildcardObfuscation { p, q, h }
+    }
+
+    pub fn encode_many(pats_input: &[&str], secparam: usize) -> Self {
+        let n = pats_input[0].len();
+        for subpat in pats_input {
+            if subpat.len() != n {
+                panic!("subpattern \"{}\" does not have length {}!", subpat, n);
+            }
+            if subpat.contains("*") {
+                panic!("multi-match does not support wildcards")
+            }
+        }
+
+        let pats: Vec<Vec<char>> = pats_input.iter().map(|&pat| pat.chars().collect()).collect();
+
+        let ref mut rng = rand::thread_rng();
+        let (p,q) = get_primes(secparam);
+        let g = Mpz::from(2);
+
+        let mut vals: Vec<[Option<Mpz>; 2]> = vec![[None, None]; n];
+        let mut polys: Vec<Vec<(usize, Mpz)>> = Vec::new();
+
+        for pi in 0..pats.len() {
+            let mut prev = Vec::new();
+            'char_loop: for i in 0..n {
+                for pj in 0..pi {
+                    for j in 0..2 {
+                         if pats[pi][i] == pats[pj][i] {
+                            prev.push((2*i+j, lagrange_poly_eval(&polys[pj], 2*i+j)));
+                            continue 'char_loop;
+                        }
+                    }
+                }
+            }
+        }
+
+        // // create the h_ij encodings
+        // let mut h = Vec::with_capacity(pat.len());
+        // for (i, elem) in pat.chars().enumerate() {
+        //     h.push([Mpz::from(0), Mpz::from(0)]);
+        //     for &j in [0,1].iter() {
+        //         let j_as_char = std::char::from_digit(j as u32, 10).unwrap();
+
+        //         if elem == j_as_char || elem == '*' {
+        //             let y = poly_eval(f, &Mpz::from(point(i,j)));
+        //             h[i][j] = g.powm(&y, &p);
+        //         } else {
+        //             h[i][j] = rand_mpz_mod(rng, &p);
+        //         }
+        //     }
+        // }
+        // WildcardObfuscation { p, q, h }
+        unimplemented!()
     }
 
     pub fn eval(&self, inp: &str) -> usize {
@@ -111,6 +162,10 @@ fn poly_eval(coefs: &Vec<Mpz>, x: &Mpz) -> Mpz {
         y += &coefs[i] * x.pow(i as u32 + 1)
     }
     y
+}
+
+fn lagrange_poly_eval(points: &Vec<(usize, Mpz)>, interp_at: usize) -> Mpz {
+    unimplemented!()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -156,5 +211,26 @@ impl WildcardObfuscation {
         }
         assert_eq!(lines.next(), Option::None);
         WildcardObfuscation { p, q, h }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn simple_pattern() {
+        let obf = WildcardObfuscation::encode("0*10", 1024);
+        assert_eq!(obf.eval("0110"), 1);
+        assert_eq!(obf.eval("0010"), 1);
+        assert_eq!(obf.eval("1010"), 0);
+    }
+
+    #[test]
+    fn multi_pattern() {
+        let obf = WildcardObfuscation::encode_many(&["0110","1001"], 1024);
+        assert_eq!(obf.eval("0110"), 1);
+        assert_eq!(obf.eval("1001"), 1);
+        assert_eq!(obf.eval("1010"), 0);
+        assert_eq!(obf.eval("0111"), 0);
     }
 }
