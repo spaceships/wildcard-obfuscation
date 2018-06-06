@@ -12,9 +12,18 @@ pub struct WildcardObfuscation {
     h: Vec<[Mpz; 2]>,   // h_ij encodings
 }
 
-pub fn point(i: usize, j: usize) -> i32 {
-    2*(i as i32 + 1) + j as i32
+macro_rules! point {
+    ( $i:expr, $j:expr ) => {
+        2*($i+1)+$j
+    };
 }
+
+macro_rules! max_point {
+    ( $n:expr ) => {
+        2*($n+1)
+    };
+}
+
 
 pub fn get_primes(secparam: usize) -> (Mpz, Mpz) {
     match secparam {
@@ -59,7 +68,7 @@ impl WildcardObfuscation {
                 let j_as_char = std::char::from_digit(j as u32, 10).unwrap();
 
                 if elem == j_as_char || elem == '*' {
-                    let y = poly_eval(f, &Mpz::from(point(i,j)));
+                    let y = poly_eval(f, &Mpz::from(point!(i,j) as i32));
                     h[i][j] = g.powm(&y, &p);
                 } else {
                     h[i][j] = rand_mpz_mod(rng, &p);
@@ -83,43 +92,56 @@ impl WildcardObfuscation {
         let pats: Vec<Vec<char>> = pats_input.iter().map(|&pat| pat.chars().collect()).collect();
 
         let ref mut rng = rand::thread_rng();
-        let (p,q) = get_primes(secparam);
+        let (p, q) = get_primes(secparam);
         let g = Mpz::from(2);
 
-        let mut vals: Vec<[Option<Mpz>; 2]> = vec![[None, None]; n];
         let mut polys: Vec<Vec<(usize, Mpz)>> = Vec::new();
 
         for pi in 0..pats.len() {
-            let mut prev = Vec::new();
+            let mut points = Vec::with_capacity(n);
+            points.push((0,Mpz::from(0)));
             'char_loop: for i in 0..n {
                 for pj in 0..pi {
                     for j in 0..2 {
                          if pats[pi][i] == pats[pj][i] {
-                            prev.push((2*i+j, lagrange_poly_eval(&polys[pj], 2*i+j)));
+                            points.push((2*i+j, lagrange_poly_eval(2*i+j, &polys[pj], &q)));
                             continue 'char_loop;
                         }
                     }
                 }
             }
+            // we now have prev filled all the points from previous polys
+            assert!(points.len() < n, "ran out of freedom!");
+            let mut ctr = 0;
+            while points.len() < n {
+                points.push((max_point!(n)+ctr, rand_mpz_mod(rng, &q)));
+                ctr += 1;
+            }
+            polys.push(points);
         }
 
-        // // create the h_ij encodings
-        // let mut h = Vec::with_capacity(pat.len());
-        // for (i, elem) in pat.chars().enumerate() {
-        //     h.push([Mpz::from(0), Mpz::from(0)]);
-        //     for &j in [0,1].iter() {
-        //         let j_as_char = std::char::from_digit(j as u32, 10).unwrap();
+        // create the h_ij encodings
+        let mut h = Vec::with_capacity(n);
+        for i in 0..n {
+            h.push([Mpz::from(0), Mpz::from(0)]);
+            for j in 0..2 {
+                let mut found_match = false;
+                for pi in 0..pats.len() {
+                    let j_as_char = std::char::from_digit(j as u32, 10).unwrap();
+                    if pats[pi][i] == j_as_char {
+                        let y = lagrange_poly_eval(point!(i,j), &polys[pi], &q);
+                        h[i][j] = g.powm(&y, &p);
+                        found_match = true;
+                        break;
+                    }
+                }
+                if !found_match {
+                    h[i][j] = rand_mpz_mod(rng, &p);
+                }
+            }
+        }
 
-        //         if elem == j_as_char || elem == '*' {
-        //             let y = poly_eval(f, &Mpz::from(point(i,j)));
-        //             h[i][j] = g.powm(&y, &p);
-        //         } else {
-        //             h[i][j] = rand_mpz_mod(rng, &p);
-        //         }
-        //     }
-        // }
-        // WildcardObfuscation { p, q, h }
-        unimplemented!()
+        WildcardObfuscation { p, q, h }
     }
 
     pub fn eval(&self, inp: &str) -> usize {
@@ -131,9 +153,10 @@ impl WildcardObfuscation {
         }).collect();
 
         let mut t = Mpz::from(1);
+        let pts: Vec<usize> = x.iter().enumerate().map(|(i, &x)| point!(i, x)).collect();
         for i in 0..inp.len() {
             // compute lagrange coeficient in the exponent group
-            let exp = lagrange_coef(i, &x, &self.q);
+            let exp = lagrange_coef(i, 0, pts.as_slice(), &self.q);
             let val = self.h[i][x[i]].powm(&exp, &self.p);
             t *= val;
             t %= &self.p;
@@ -141,18 +164,6 @@ impl WildcardObfuscation {
 
         (t == Mpz::from(1)) as usize
     }
-}
-
-fn lagrange_coef(i: usize, x: &[usize], q: &Mpz) -> Mpz {
-    let mut prod = Mpz::from(1);
-    for j in 0..x.len() {
-        if i == j { continue }
-        let pi = Mpz::from(point(i, x[i]));
-        let pj = Mpz::from(point(j, x[j]));
-        prod *= (-&pj) * (&pi - &pj).invert(q).expect("couldn't invert!") % q;
-        prod %= q;
-    }
-    prod
 }
 
 fn poly_eval(coefs: &Vec<Mpz>, x: &Mpz) -> Mpz {
@@ -164,8 +175,27 @@ fn poly_eval(coefs: &Vec<Mpz>, x: &Mpz) -> Mpz {
     y
 }
 
-fn lagrange_poly_eval(points: &Vec<(usize, Mpz)>, interp_at: usize) -> Mpz {
-    unimplemented!()
+fn lagrange_poly_eval(interp_at: usize, points: &[(usize, Mpz)], q: &Mpz) -> Mpz {
+    let mut acc = Mpz::from(0);
+    let xs: Vec<usize> = points.iter().map(|pt| pt.0).collect();
+    for i in 0..points.len() {
+        let lag = lagrange_coef(i, interp_at, xs.as_slice(), q);
+        acc = (acc + &points[i].1 * lag) % q;
+    }
+    acc
+}
+
+fn lagrange_coef(i: usize, x: usize, xs: &[usize], q: &Mpz) -> Mpz {
+    let mut prod = Mpz::from(1);
+    let ref px = Mpz::from(x as i32);
+    for j in 0..xs.len() {
+        if i == j { continue }
+        let ref pi = Mpz::from(xs[i] as i32);
+        let ref pj = Mpz::from(xs[j] as i32);
+        prod *= (px - pj) * (pi - pj).invert(q).expect("couldn't invert!") % q;
+        prod %= q;
+    }
+    prod
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -223,13 +253,14 @@ mod tests {
         assert_eq!(obf.eval("0110"), 1);
         assert_eq!(obf.eval("0010"), 1);
         assert_eq!(obf.eval("1010"), 0);
+        assert_eq!(obf.eval("0011"), 0);
     }
 
     #[test]
     fn multi_pattern() {
-        let obf = WildcardObfuscation::encode_many(&["0110","1001"], 1024);
+        let obf = WildcardObfuscation::encode_many(&["0110", "1011"], 1024);
         assert_eq!(obf.eval("0110"), 1);
-        assert_eq!(obf.eval("1001"), 1);
+        assert_eq!(obf.eval("1011"), 1);
         assert_eq!(obf.eval("1010"), 0);
         assert_eq!(obf.eval("0111"), 0);
     }
