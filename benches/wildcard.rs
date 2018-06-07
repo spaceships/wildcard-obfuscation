@@ -1,13 +1,17 @@
-#![feature(test)]
+#[macro_use]
+extern crate criterion;
+
 extern crate wildcard;
-extern crate test;
 extern crate rand;
 
 use wildcard::protocol::*;
 
-use test::Bencher;
+use criterion::Criterion;
 use rand::{thread_rng, Rng};
 use std::char::from_digit;
+use std::time::Duration;
+
+const N: usize = 16;
 
 fn rand_inp<R: Rng>(rng: &mut R, n: usize) -> String {
     (0..n).map(|_| from_digit(rng.gen_range(0,2), 10).unwrap() ).collect()
@@ -26,25 +30,35 @@ fn rand_pat<R: Rng>(rng: &mut R, n: usize) -> String {
     pat.into_iter().collect()
 }
 
-fn bench_obf_base(b: &mut Bencher, n: usize, secparam: usize) {
-    let rng = &mut thread_rng();
-    b.iter(|| {
-        let pat = rand_pat(rng, n);
+fn bench_obf(c: &mut Criterion) {
+    let secparam = 1024;
+    c.bench_function("obf", move |b| {
+        let rng = &mut thread_rng();
+        b.iter(|| {
+            let pat = rand_pat(rng, N);
+            let obf = WildcardObfuscation::encode(&pat, secparam);
+            criterion::black_box(obf);
+        });
+    });
+}
+
+fn bench_eval(c: &mut Criterion) {
+    let secparam = 1024;
+    c.bench_function("eval", move |b| {
+        let rng = &mut thread_rng();
+        let pat = rand_pat(rng, N);
         let obf = WildcardObfuscation::encode(&pat, secparam);
-        test::black_box(obf);
+        b.iter(|| {
+            let inp = rand_inp(rng, N);
+            let res = obf.eval(&inp);
+            criterion::black_box(res);
+        });
     });
 }
 
-fn bench_eval_base(b: &mut Bencher, n: usize, secparam: usize) {
-    let rng = &mut thread_rng();
-    let pat = rand_pat(rng, n);
-    let obf = WildcardObfuscation::encode(&pat, secparam);
-    b.iter(|| {
-        let inp = rand_inp(rng, n);
-        let res = obf.eval(&inp);
-        test::black_box(res);
-    });
+criterion_group!{
+    name = benches;
+    config = Criterion::default().sample_size(10).warm_up_time(Duration::from_millis(10));
+    targets = bench_obf, bench_eval
 }
-
-#[bench] fn obf_s1024_n64 (b: &mut Bencher) { bench_obf_base(b, 64,  1024) }
-#[bench] fn eval_s1024_n64 (b: &mut Bencher) { bench_eval_base(b, 64,  1024) }
+criterion_main!(benches);
