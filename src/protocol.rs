@@ -14,16 +14,15 @@ pub struct WildcardObfuscation {
 
 macro_rules! point {
     ( $i:expr, $j:expr ) => {
-        2*($i+1)+$j
+        (2*($i+1)+$j) as u64
     };
 }
 
 macro_rules! max_point {
     ( $n:expr ) => {
-        2*($n+1)
+        (2*($n+2)) as u64
     };
 }
-
 
 pub fn get_primes(secparam: usize) -> (Mpz, Mpz) {
     match secparam {
@@ -50,7 +49,6 @@ pub fn get_primes(secparam: usize) -> (Mpz, Mpz) {
 }
 
 impl WildcardObfuscation {
-
     pub fn encode(pat: &str, secparam: usize) -> Self {
         let n = pat.len();
         let ref mut rng = rand::thread_rng();
@@ -58,7 +56,8 @@ impl WildcardObfuscation {
         let g = Mpz::from(2);
 
         // generate the random polynomial F with F(0) = 0
-        let ref f = rand_mpz_mod_vec(rng, &p, n-1);
+        let ref mut f = rand_mpz_mod_vec(rng, &q, n);
+        f[0] = Mpz::from(0);
 
         // create the h_ij encodings
         let mut h = Vec::with_capacity(pat.len());
@@ -68,7 +67,7 @@ impl WildcardObfuscation {
                 let j_as_char = std::char::from_digit(j as u32, 10).unwrap();
 
                 if elem == j_as_char || elem == '*' {
-                    let y = poly_eval(f, &Mpz::from(point!(i,j) as i32));
+                    let y = poly_eval(f, &Mpz::from(point!(i,j)));
                     h[i][j] = g.powm(&y, &p);
                 } else {
                     h[i][j] = rand_mpz_mod(rng, &p);
@@ -95,7 +94,7 @@ impl WildcardObfuscation {
         let (p, q) = get_primes(secparam);
         let g = Mpz::from(2);
 
-        let mut polys: Vec<Vec<(usize, Mpz)>> = Vec::new();
+        let mut polys: Vec<Vec<(u64, Mpz)>> = Vec::new();
 
         for pi in 0..pats.len() {
             let mut points = Vec::with_capacity(n);
@@ -104,7 +103,7 @@ impl WildcardObfuscation {
                 for pj in 0..pi {
                     for j in 0..2 {
                          if pats[pi][i] == pats[pj][i] {
-                            points.push((2*i+j, lagrange_poly_eval(2*i+j, &polys[pj], &q)));
+                            points.push((point!(i,j), lagrange_poly_eval(point!(i,j), &polys[pj], &q)));
                             continue 'char_loop;
                         }
                     }
@@ -112,7 +111,7 @@ impl WildcardObfuscation {
             }
             // we now have prev filled all the points from previous polys
             assert!(points.len() < n, "ran out of freedom!");
-            let mut ctr = 0;
+            let mut ctr: u64 = 0;
             while points.len() < n {
                 points.push((max_point!(n)+ctr, rand_mpz_mod(rng, &q)));
                 ctr += 1;
@@ -153,10 +152,10 @@ impl WildcardObfuscation {
         }).collect();
 
         let mut t = Mpz::from(1);
-        let pts: Vec<usize> = x.iter().enumerate().map(|(i, &x)| point!(i, x)).collect();
+        let pts: Vec<u64> = x.iter().enumerate().map(|(i, &x)| point!(i, x)).collect();
         for i in 0..inp.len() {
             // compute lagrange coeficient in the exponent group
-            let exp = lagrange_coef(i, 0, pts.as_slice(), &self.q);
+            let exp = lagrange_coef(i as u64, 0, pts.as_slice(), &self.q);
             let val = self.h[i][x[i]].powm(&exp, &self.p);
             t *= val;
             t %= &self.p;
@@ -167,33 +166,34 @@ impl WildcardObfuscation {
 }
 
 fn poly_eval(coefs: &Vec<Mpz>, x: &Mpz) -> Mpz {
-    let mut y = Mpz::from(0);
-    for i in 0..coefs.len() {
+    let mut y = coefs[0].clone();
+    for i in 1..coefs.len() {
         if x == &Mpz::from(0) { continue }
-        y += &coefs[i] * x.pow(i as u32 + 1)
+        y += &coefs[i] * x.pow(i as u32);
     }
     y
 }
 
-fn lagrange_poly_eval(interp_at: usize, points: &[(usize, Mpz)], q: &Mpz) -> Mpz {
+fn lagrange_poly_eval(interp_at: u64, points: &[(u64, Mpz)], q: &Mpz) -> Mpz {
     let mut acc = Mpz::from(0);
-    let xs: Vec<usize> = points.iter().map(|pt| pt.0).collect();
+    let xs: Vec<u64> = points.iter().map(|pt| pt.0).collect();
     for i in 0..points.len() {
-        let lag = lagrange_coef(i, interp_at, xs.as_slice(), q);
-        acc = (acc + &points[i].1 * lag) % q;
+        let lag = lagrange_coef(i as u64, interp_at, xs.as_slice(), q);
+        acc += &points[i].1 * lag;
+        acc = acc.modulus(q);
     }
     acc
 }
 
-fn lagrange_coef(i: usize, x: usize, xs: &[usize], q: &Mpz) -> Mpz {
+fn lagrange_coef(i: u64, x: u64, xs: &[u64], q: &Mpz) -> Mpz {
     let mut prod = Mpz::from(1);
-    let ref px = Mpz::from(x as i32);
+    let ref px = Mpz::from(x);
     for j in 0..xs.len() {
-        if i == j { continue }
-        let ref pi = Mpz::from(xs[i] as i32);
-        let ref pj = Mpz::from(xs[j] as i32);
-        prod *= (px - pj) * (pi - pj).invert(q).expect("couldn't invert!") % q;
-        prod %= q;
+        if i == j as u64 { continue }
+        let ref pi = Mpz::from(xs[i as usize]);
+        let ref pj = Mpz::from(xs[j as usize]);
+        prod *= (px - pj) * (pi - pj).invert(q).expect("couldn't invert!");
+        prod = prod.modulus(q);
     }
     prod
 }
@@ -247,6 +247,8 @@ impl WildcardObfuscation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::Rng;
+
     #[test]
     fn simple_pattern() {
         let obf = WildcardObfuscation::encode("0*10", 1024);
@@ -263,5 +265,33 @@ mod tests {
         assert_eq!(obf.eval("1011"), 1);
         assert_eq!(obf.eval("1010"), 0);
         assert_eq!(obf.eval("0111"), 0);
+    }
+
+    #[test]
+    fn testmpz() {
+        let x = Mpz::from(-4).modulus(&Mpz::from(5));
+        assert_eq!(x, Mpz::from(1));
+    }
+
+    #[test]
+    fn test_lagrange_poly_eval() {
+        let n = 16;
+        let ref mut rng = rand::thread_rng();
+        let (p,q) = get_primes(1024);
+        let ref f = rand_mpz_mod_vec(rng, &q, n-1);
+        for _ in 0..16 {
+            // get n random points
+            let mut points = Vec::new();
+            for _ in 0..n {
+                let x : u64 = rng.gen();
+                let y = poly_eval(f, &Mpz::from(x));
+                points.push((x,y));
+            }
+            for _ in 0..16 {
+                let x : u64 = rng.gen();
+                let y = poly_eval(f, &Mpz::from(x)) % &p;
+                assert_eq!(lagrange_poly_eval(x, &points, &p), y);
+            }
+        }
     }
 }
