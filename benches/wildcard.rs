@@ -11,7 +11,7 @@ use rand::{thread_rng, Rng};
 use std::char::from_digit;
 use std::time::Duration;
 
-const N: usize = 16;
+const N: usize = 64;
 
 fn rand_inp<R: Rng>(rng: &mut R, n: usize) -> String {
     (0..n).map(|_| from_digit(rng.gen_range(0,2), 10).unwrap() ).collect()
@@ -31,7 +31,7 @@ fn rand_pat<R: Rng>(rng: &mut R, n: usize) -> String {
 }
 
 fn bench_obf(c: &mut Criterion) {
-    let secparam = 1024;
+    let secparam = 128;
     c.bench_function("obf", move |b| {
         let rng = &mut thread_rng();
         b.iter(|| {
@@ -43,7 +43,7 @@ fn bench_obf(c: &mut Criterion) {
 }
 
 fn bench_eval(c: &mut Criterion) {
-    let secparam = 1024;
+    let secparam = 128;
     c.bench_function("eval", move |b| {
         let rng = &mut thread_rng();
         let pat = rand_pat(rng, N);

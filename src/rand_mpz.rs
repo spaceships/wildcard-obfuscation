@@ -2,9 +2,9 @@ use gmp::mpz::{Mpz, ProbabPrimeResult};
 use rand::Rng;
 
 pub fn rand_mpz<R: Rng>(rng: &mut R, n: usize) -> Mpz {
-    let bs: Vec<u8> = (0..n/8+1).map(|i| {
+    let bs: Vec<u8> = (0..n/8).map(|i| {
         if i==n/8 {
-            rng.gen::<u8>() % ((n%8) as u8)
+            rng.gen::<u8>() % (1<<((n%8) as u8))
         } else {
             rng.gen()
         }
@@ -14,11 +14,8 @@ pub fn rand_mpz<R: Rng>(rng: &mut R, n: usize) -> Mpz {
 
 pub fn rand_mpz_range<R: Rng>(rng: &mut R, start: &Mpz, end: &Mpz) -> Mpz {
     debug_assert!(start < end);
-    let mut val = rand_mpz(rng, end.bit_length());
-    while &val < start {
-        val = rand_mpz(rng, end.bit_length());
-    }
-    val % end
+    let val = rand_mpz(rng, end.bit_length());
+    (val + start) % end
 }
 
 pub fn rand_mpz_mod<R: Rng>(rng: &mut R, q: &Mpz) -> Mpz {
