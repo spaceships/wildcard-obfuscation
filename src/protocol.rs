@@ -119,7 +119,15 @@ impl Obf {
                 }
             }
             // we now have points filled all the points from previous polys
-            assert!(points.len() <= n, "too many points!");
+            if points.len() > n {
+                println!("input patterns:");
+                for pat in pats_input.iter() {
+                    println!("\t{}", pat);
+                }
+                println!("too many points for pattern {}: got {} previous points but n={}",
+                         pats_input[pi], points.len(), n);
+                panic!();
+            }
             let mut ctr: u64 = 0;
             while points.len() < n {
                 // just pick unused points
