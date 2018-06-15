@@ -14,13 +14,13 @@ pub struct WildcardObfuscation {
 
 macro_rules! point {
     ( $i:expr, $j:expr ) => {
-        (2*($i+1)+$j) as u64
+        (2*$i+$j+1) as u64
     };
 }
 
 macro_rules! max_point {
     ( $n:expr ) => {
-        (2*($n+2)) as u64
+        (2*($n+1)) as u64
     };
 }
 
@@ -48,19 +48,6 @@ pub fn get_primes(secparam: usize) -> (Mpz, Mpz) {
                     863821552516638943733554360213543322960464531847860495214819355585361\
                     1059598484551", 10).unwrap()
             ),
-    //     128 => (
-    //         Mpz::from_str_radix("3595386269724631815458610381578049467235953957884613\
-    //             145468601623154653516110019262654169546448150720422402277597427867153\
-    //             175795376288332449856948612789482487555357868497309705526044392024921\
-    //             882389061659041700115376763013646849257629478262210816544743267010213\
-    //             69172596479894491876959432609670712659248449113067", 10).unwrap(),
-    //         Mpz::from_str_radix("1797693134862315907729305190789024733617976978942306\
-    //             572734300811577326758055009631327084773224075360211201138798713933576\
-    //             587897688144166224928474306394741243777678934248654852763022196012460\
-    //             941194530829520850057688381506823424628814739131105408272371633505106\
-    //             84586298239947245938479716304835356329624224556533", 10).unwrap(),
-    //     ),
-
         _ => {
             eprint!("generating {}-bit prime...", secparam);
             let (p, q) = mpz_strong_prime(secparam);
@@ -100,7 +87,7 @@ impl WildcardObfuscation {
         WildcardObfuscation { p, q, h }
     }
 
-    pub fn encode_many(pats_input: &[&str], secparam: usize) -> Self {
+    pub fn multimatch(pats_input: &[&str], secparam: usize) -> Self {
         let n = pats_input[0].len();
         for subpat in pats_input {
             if subpat.len() != n {
@@ -136,10 +123,7 @@ impl WildcardObfuscation {
                 }
             }
             // we now have points filled all the points from previous polys
-            if points.len() >= n {
-                println!("pat={:?} failed on {:?} points={:?}", pats_input, pats_input[pi], points);
-                assert!(points.len() < n, "ran out of freedom!");
-            }
+            assert!(points.len() <= n, "too many points!");
             let mut ctr: u64 = 0;
             while points.len() < n {
                 // just pick unused points
@@ -297,9 +281,9 @@ mod tests {
     }
 
     #[test]
-    fn multi_pattern() {
+    fn test_multimatch() {
         for _ in 0..16 {
-            let obf = WildcardObfuscation::encode_many(&["011000", "101100", "000001"], 128);
+            let obf = WildcardObfuscation::multimatch(&["011000", "101100", "000000"], 128);
             assert_eq!(obf.eval("011000"), 1);
             assert_eq!(obf.eval("101100"), 1);
             assert_eq!(obf.eval("101000"), 0);

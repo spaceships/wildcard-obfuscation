@@ -8,7 +8,6 @@ use clap::{Arg, App, SubCommand, AppSettings};
 use std::process::exit;
 
 fn main() {
-
     let matches = App::new("wildcard")
         .setting(AppSettings::SubcommandRequiredElseHelp)
         .global_setting(AppSettings::ColoredHelp)
@@ -27,9 +26,9 @@ fn main() {
                          .short("o")
                          .default_value("wildcard.obf"))
                     .arg(Arg::with_name("secparam")
-                         .help("security parameter")
+                         .help("size of primes")
                          .value_name("NUM")
-                         .default_value("128")
+                         .default_value("2048")
                          .short("s")
                          .long("secparam")))
 
