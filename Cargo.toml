@@ -14,7 +14,7 @@ criterion = "0.2"
 
 [[bin]]
 name = "wildcard"
-path = "app/main.rs"
+path = "app/wildcard.rs"
 
 [[bench]]
 name = "wildcard"

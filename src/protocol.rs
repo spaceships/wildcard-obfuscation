@@ -6,7 +6,7 @@ use std;
 use std::io::{Read, Write, BufWriter};
 use std::fs::File;
 
-pub struct WildcardObfuscation {
+pub struct Obf {
     p: Mpz,             // prime modulus
     q: Mpz,             // prime modulus for the exponent
     h: Vec<[Mpz; 2]>,   // h_ij encodings
@@ -57,7 +57,7 @@ pub fn get_primes(secparam: usize) -> (Mpz, Mpz) {
     }
 }
 
-impl WildcardObfuscation {
+impl Obf {
     pub fn encode(pat: &str, secparam: usize) -> Self {
         let n = pat.len();
         let ref mut rng = rand::thread_rng();
@@ -84,7 +84,7 @@ impl WildcardObfuscation {
                 }
             }
         }
-        WildcardObfuscation { p, q, h }
+        Obf { p, q, h }
     }
 
     pub fn multimatch(pats_input: &[&str], secparam: usize) -> Self {
@@ -93,17 +93,12 @@ impl WildcardObfuscation {
             if subpat.len() != n {
                 panic!("subpattern \"{}\" does not have length {}!", subpat, n);
             }
-            if subpat.contains("*") {
-                panic!("multi-match does not support wildcards")
-            }
         }
 
         let pats: Vec<Vec<char>> = pats_input.iter().map(|&pat| pat.chars().collect()).collect();
-        println!("{:?}", pats);
 
         let ref mut rng = rand::thread_rng();
         let (p, q) = get_primes(secparam);
-        println!("p={} q={}", p, q);
         let g = Mpz::from(2);
 
         let mut polys: Vec<Vec<(u64, Mpz)>> = Vec::new();
@@ -115,7 +110,8 @@ impl WildcardObfuscation {
                 for pj in 0..pi { // previous patterns
                     for j in 0..2 {
                         let j_as_char = std::char::from_digit(j as u32, 10).unwrap();
-                        if pats[pi][i] == j_as_char && pats[pj][i] == j_as_char {
+                        if (pats[pi][i] == '*' || pats[pi][i] == j_as_char) &&
+                            (pats[pj][i] == '*' || pats[pj][i] == j_as_char) {
                             points.push((point!(i,j), lagrange_poly_eval(point!(i,j), &polys[pj], &q)));
                             continue 'char_loop;
                         }
@@ -128,14 +124,11 @@ impl WildcardObfuscation {
             while points.len() < n {
                 // just pick unused points
                 let y = rand_mpz_mod(rng, &Mpz::from(secparam as u64));
-                println!("y={}", y);
                 points.push((max_point!(n)+ctr, y));
                 ctr += 1;
             }
             polys.push(points);
         }
-
-        println!("{:?}", polys);
 
         // create the h_ij encodings
         let mut h = Vec::with_capacity(n);
@@ -158,9 +151,7 @@ impl WildcardObfuscation {
             }
         }
 
-        println!("{:?}", h);
-
-        WildcardObfuscation { p, q, h }
+        Obf { p, q, h }
     }
 
     pub fn eval(&self, inp: &str) -> usize {
@@ -221,7 +212,7 @@ fn lagrange_coef(i: u64, x: u64, xs: &[u64], q: &Mpz) -> Mpz {
 ////////////////////////////////////////////////////////////////////////////////
 // serialization
 
-impl WildcardObfuscation {
+impl Obf {
     pub fn to_file(&self, filename: &str) {
         let file = File::create(filename).expect("could not create file!");
         let mut buf = BufWriter::new(file);
@@ -260,7 +251,7 @@ impl WildcardObfuscation {
             }
         }
         assert_eq!(lines.next(), Option::None);
-        WildcardObfuscation { p, q, h }
+        Obf { p, q, h }
     }
 }
 
@@ -272,7 +263,7 @@ mod tests {
     #[test]
     fn simple_pattern() {
         for _ in 0..1 {
-            let obf = WildcardObfuscation::encode("0*10", 2048);
+            let obf = Obf::encode("0*10", 2048);
             assert_eq!(obf.eval("0110"), 1);
             assert_eq!(obf.eval("0010"), 1);
             assert_eq!(obf.eval("1010"), 0);
@@ -283,7 +274,7 @@ mod tests {
     #[test]
     fn test_multimatch() {
         for _ in 0..16 {
-            let obf = WildcardObfuscation::multimatch(&["011000", "101100", "000000"], 128);
+            let obf = Obf::multimatch(&["011000", "101100", "000000"], 128);
             assert_eq!(obf.eval("011000"), 1);
             assert_eq!(obf.eval("101100"), 1);
             assert_eq!(obf.eval("101000"), 0);
