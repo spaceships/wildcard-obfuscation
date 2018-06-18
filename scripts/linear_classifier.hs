@@ -14,26 +14,32 @@ main = do
         hPutStrLn stderr "5 integer arguments required"
         exitFailure
 
-    let vals = sequence [ [ 0..max ] | max <- map read args :: [Int] ]
-        strs = (map.concatMap) (printf "%08b") vals
+    let strs = generate (map read args)
+    mapM putStrLn strs
 
-    mapM putStrLn (nub (combine (combine strs)))
+generate :: [Int] -> [String]
+generate thresholds = map concat (sequence bytes)
+  where
+    bytes = [ combine (map (printf "%08b") [ 0..max ]) | max <- thresholds ]
 
--- hamming distance of two strings
+-- hamming distance
 delta :: String -> String -> Int
-delta xs ys = sum (zipWith ham xs ys)
-  where ham x y = abs (ord x - ord y)
+delta s1 s2 = sum (zipWith ham s1 s2)
+  where
+    ham c1 c2 = abs (ord c1 - ord c2)
 
-join :: String -> String -> Maybe String
-join xs ys
-    | delta xs ys == 1 = Just (zipWith (\x y -> if x == y then x else '*') xs ys)
-    | otherwise        = Nothing
+-- put a star where the strings differ
+star :: String -> String -> String
+star s1 s2 = zipWith (\c1 c2 -> if c1 == c2 then c1 else '*') s1 s2
 
+-- keep combining until there is nothing left to combine
 combine :: [String] -> [String]
-combine xs = do
-    x <- xs
-    y <- xs
-    guard (x /= y)
-    case join x y of
-        Nothing -> [x,y]
-        Just z -> [z]
+combine xs = case combineRec xs 0 of
+    (ys, 0) -> ys
+    (ys, _) -> combine ys
+
+combineRec :: [String] -> Int -> ([String], Int)
+combineRec [] n = ([], n)
+combineRec (x:xs) n = case find ((==) 1 . delta x) xs of
+    Just y  -> combineRec (star x y : delete y xs) (n+1)
+    Nothing -> let (ys,n') = combineRec xs n in (x:ys, n')

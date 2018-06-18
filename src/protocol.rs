@@ -127,13 +127,14 @@ impl Obf {
                 println!("too many points for pattern {}: got {} previous points but n={}",
                          pats_input[pi], points.len(), n);
                 panic!();
-            }
-            let mut ctr: u64 = 0;
-            while points.len() < n {
-                // just pick unused points
-                let y = rand_mpz_mod(rng, &Mpz::from(secparam as u64));
-                points.push((max_point!(n)+ctr, y));
-                ctr += 1;
+            } else {
+                let mut ctr: u64 = 0;
+                while points.len() < n {
+                    // just pick unused points
+                    let y = rand_mpz_mod(rng, &Mpz::from(secparam as u64));
+                    points.push((max_point!(n)+ctr, y));
+                    ctr += 1;
+                }
             }
             polys.push(points);
         }
