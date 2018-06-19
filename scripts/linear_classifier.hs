@@ -7,20 +7,24 @@ import System.IO
 import System.Exit
 import Data.Char
 import Data.List
+import Data.Ord
 
 main = do
     args <- getArgs
-    when (length args /= 5) $ do
-        hPutStrLn stderr "5 integer arguments required"
-        exitFailure
-
     let strs = generate (map read args)
     mapM putStrLn strs
+
+sortByStars :: [String] -> [String]
+sortByStars = sortBy starsCmp
+  where
+    nstars = map (\c -> if c == '*' then 1 else 0)
+    starsCmp s1 s2 = compare (nstars s1) (nstars s2)
 
 generate :: [Int] -> [String]
 generate thresholds = map concat (sequence bytes)
   where
-    bytes = [ combine (map (printf "%08b") [ 0..max ]) | max <- thresholds ]
+    -- bytes = [ combine (map (printf "%08b") [ 0..max ]) | max <- thresholds ]
+    bytes = [ map (printf "%08b") [ 0..max ] | max <- thresholds ]
 
 -- hamming distance
 delta :: String -> String -> Int

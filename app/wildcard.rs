@@ -54,14 +54,15 @@ fn main() {
         .subcommand(SubCommand::with_name("eval")
                     .display_order(3)
                     .about("evaluate an obfuscated pattern on an input string")
-                    .arg(Arg::with_name("OBF")
-                         .help("read the obfuscation from OBF")
-                         .required(true)
-                         .index(1))
+                    .arg(Arg::with_name("obf_file")
+                         .help("read the obfuscation from FILE")
+                         .value_name("FILE")
+                         .short("o")
+                         .default_value("wildcard.obf"))
                     .arg(Arg::with_name("INPUT")
                          .help("the input string to evaluate (\"-\" to read from stdin)")
                          .required(true)
-                         .index(2)))
+                         .index(1)))
         .get_matches();
 
     match matches.subcommand() {
@@ -82,7 +83,7 @@ fn main() {
         }
 
         ("eval", Some(matches)) => {
-            let obf = matches.value_of("OBF").expect("OBF required!");
+            let obf = matches.value_of("obf_file").unwrap();
             let inp = matches.value_of("INPUT").expect("INPUT required!");
             eval_main(obf, inp);
         }
