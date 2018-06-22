@@ -11,7 +11,9 @@ import Data.Ord
 
 main = do
     args <- getArgs
-    let strs = generate (map read args)
+    let strs = case head args of
+            "-n" -> map show $ generate (tail (map read args))
+            _    -> genStrs (map read args)
     mapM putStrLn strs
 
 sortByStars :: [String] -> [String]
@@ -20,11 +22,11 @@ sortByStars = sortBy starsCmp
     nstars = map (\c -> if c == '*' then 1 else 0)
     starsCmp s1 s2 = compare (nstars s1) (nstars s2)
 
-generate :: [Int] -> [String]
-generate thresholds = map concat (sequence bytes)
-  where
-    -- bytes = [ combine (map (printf "%08b") [ 0..max ]) | max <- thresholds ]
-    bytes = [ map (printf "%08b") [ 0..max ] | max <- thresholds ]
+generate :: [Int] -> [[Int]]
+generate thresholds = sequence [ [ 0..max ] | max <- thresholds ]
+
+genStrs :: [Int] -> [String]
+genStrs thresholds = map (concat . map (printf "%08b")) (generate thresholds)
 
 -- hamming distance
 delta :: String -> String -> Int
