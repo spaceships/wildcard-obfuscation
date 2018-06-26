@@ -3,7 +3,6 @@ use rand_mpz::*;
 use gmp::mpz::Mpz;
 use rand;
 use std;
-use std::cmp::min;
 use std::io::{Read, Write, BufWriter};
 use std::fs::File;
 
@@ -11,6 +10,7 @@ pub struct Obf {
     p: Mpz,             // prime modulus
     q: Mpz,             // prime modulus for the exponent
     h: Vec<[Mpz; 2]>,   // h_ij encodings
+    z: Vec<Mpz>,        // encodings of F(0) for multimatch
     multi: bool,
 }
 
@@ -87,7 +87,7 @@ impl Obf {
                 }
             }
         }
-        Obf { p, q, h, multi: false }
+        Obf { p, q, h, z: vec![], multi: false }
     }
 
     pub fn multimatch(pats_input: &[&str], secparam: usize) -> Self {
@@ -107,50 +107,72 @@ impl Obf {
         let (p, q) = get_primes(secparam);
         let g = Mpz::from(2);
 
-        // let mut constraints = vec![[Vec::new(), Vec::new()]; n];
+        let mut constraints = vec![[Vec::new(), Vec::new()]; n];
 
-        // // find overlapping points
-        // for i in 0..n {
-        //     for j in 0..2 {
-        //         let j_as_char = std::char::from_digit(j as u32, 10).unwrap();
-        //         for pi in 0..pats.len() {
-        //             if pats[pi][i] == '*' || pats[pi][i] == j_as_char {
-        //                 constraints[i][j].push(pi);
-        //             }
-        //         }
-        //     }
-        // }
+        // find overlapping points
+        for i in 0..n {
+            for j in 0..2 {
+                let j_as_char = std::char::from_digit(j as u32, 10).unwrap();
+                for pi in 0..pats.len() {
+                    if pats[pi][i] == '*' || pats[pi][i] == j_as_char {
+                        constraints[i][j].push(pi);
+                    }
+                }
+            }
+        }
 
-        // // rank pats in terms of constrainedness
-        // let mut min_constraints = vec![std::usize::MAX; pats.len()];
-        // for pi in 0..pats.len() {
-        //     for i in 0..n {
-        //         for j in 0..2 {
-        //             if constraints[i][j].contains(&pi) {
-        //                 min_constraints[pi] = min(min_constraints[pi], constraints[i][j].len());
-        //             }
-        //         }
-        //     }
-        // }
+        // rank pats in terms of freedom
+        let mut freedom = vec![0; pats.len()];
+        let mut overlap = vec![0; pats.len()];
+        for pi in 0..pats.len() {
+            for i in 0..n {
+                for j in 0..2 {
+                    if constraints[i][j].contains(&pi) {
+                        if constraints[i][j].len() == 1 {
+                            freedom[pi] += 1;
+                        } else if constraints[i][j].len() > 1 {
+                            overlap[pi] += 1;
+                        }
+                    }
+                }
+            }
+        }
 
-        // let mut ordering: Vec<(usize,usize)> = min_constraints.into_iter().enumerate().collect();
-        // ordering.sort_by(|(i0,n0), (i1,n1)| n0.cmp(n1).reverse());
+        let mut ordering: Vec<(usize,usize)> = freedom.into_iter().enumerate().collect();
+        ordering.sort_by(|(_,n0), (_,n1)| n0.cmp(n1));
 
-        // for pat in pats_input {
-        //     println!("{}", pat);
-        // }
-        // println!("{:?}", constraints);
-        // println!("{:?}", ordering);
+        for pat in pats_input {
+            eprintln!("{}", pat);
+        }
+        eprintln!("constraints: {:?}", constraints);
+        eprintln!("ordering: {:?}", ordering);
+        eprintln!("overlap: {:?}", overlap);
 
         let mut h: Vec<[Mpz; 2]> = vec![[Mpz::from(0), Mpz::from(0)]; 2*n];
         let mut h_defined: Vec<[bool; 2]> = vec![[false; 2]; n];
 
-        // for (pi, _) in ordering {
-        for pi in 0..pats.len() {
-            // println!("pat:{}", pats_input[pi]);
+        // assign h_ij's for overlapping points
+        for i in 0..n {
+            for j in 0..2 {
+                if constraints[i][j].len() > 1 {
+                    h[2*i][j]   = rand_mpz_mod(rng, &Mpz::from(secparam as u64));
+                    h[2*i+1][j] = rand_mpz_mod(rng, &Mpz::from(secparam as u64));
+                    h_defined[i][j] = true;
+                    eprintln!("h_{{{},{}}} <- Zp", 2*i,j);
+                    eprintln!("h_{{{},{}}} <- Zp", 2*i+1,j);
+                }
+            }
+        }
+
+        let mut z = Vec::new();
+        eprintln!("z[{}] <- Zp", z.len());
+        z.push(rand_mpz_mod(rng, &q));
+        let mut bumps = 0;
+
+        for (pi, _) in ordering {
+            eprintln!("*** processing pat {}: {}", pi, pats_input[pi]);
 
             let mut poly = Vec::with_capacity(2*n);
-            poly.push((0, Mpz::from(0)));
             for i in 0..n {
                 for j in 0..2 {
                     let j_as_char = std::char::from_digit(j as u32, 10).unwrap();
@@ -160,34 +182,44 @@ impl Obf {
                     }
                 }
             }
-            // println!("predefined points: {}", poly.len());
+            eprintln!("predefined points: {}", poly.len());
+            if poly.len() == 2*n { // need a new z
+                if bumps > 1 {
+                    eprintln!("z[{}] <- Zp", z.len());
+                    z.push(rand_mpz_mod(rng, &q));
+                }
+                bumps += 1;
+            } else if poly.len() > 2*n {
+                panic!("cannot interpolate with more than 2*n={} points! got {}", 2*n, poly.len());
+            }
+            poly.push((0, z.last().unwrap().clone()));
             for i in 0..n {
                 for j in 0..2 {
                     let j_as_char = std::char::from_digit(j as u32, 10).unwrap();
                     if (pats[pi][i] == '*' || pats[pi][i] == j_as_char) && !h_defined[i][j] {
                         if poly.len() < 2*n {
-                            // println!("h_{{{},{}}} <- Zp", 2*i,j);
+                            eprintln!("h_{{{},{}}} <- Zp", 2*i,j);
                             h[2*i][j] = rand_mpz_mod(rng, &Mpz::from(secparam as u64));
                             poly.push((multi_point!(i,j,0), h[2*i][j].clone()));
                             if poly.len() < 2*n {
-                                // println!("h_{{{},{}}} <- Zp", 2*i+1,j);
+                                eprintln!("h_{{{},{}}} <- Zp", 2*i+1,j);
                                 h[2*i+1][j] = rand_mpz_mod(rng, &Mpz::from(secparam as u64));
                                 poly.push((multi_point!(i,j,1), h[2*i+1][j].clone()));
                             } else {
-                                // println!("h_{{{},{}}} = F({})", 2*i+1,j, multi_point!(i,j,1));
+                                eprintln!("h_{{{},{}}} = F({})", 2*i+1,j, multi_point!(i,j,1));
                                 h[2*i+1][j] = lagrange_poly_eval(multi_point!(i,j,1), poly.as_slice(), &q);
                             }
                         } else {
-                            // println!("h_{{{},{}}} = F({})", 2*i, j, multi_point!(i,j,0));
+                            eprintln!("h_{{{},{}}} = F({})", 2*i, j, multi_point!(i,j,0));
                             h[2*i][j] = lagrange_poly_eval(multi_point!(i,j,0), poly.as_slice(), &q);
-                            // println!("h_{{{},{}}} = F({})", 2*i+1, j, multi_point!(i,j,1));
+                            eprintln!("h_{{{},{}}} = F({})", 2*i+1, j, multi_point!(i,j,1));
                             h[2*i+1][j] = lagrange_poly_eval(multi_point!(i,j,1), poly.as_slice(), &q);
                         }
                         h_defined[i][j] = true;
                     }
                 }
             }
-            // println!("h_defined={:?}", h_defined);
+            eprintln!("h_defined={:?}", h_defined);
         }
 
         // create the h_ij encodings
@@ -203,7 +235,12 @@ impl Obf {
             }
         }
 
-        Obf { p, q, h, multi: true }
+        // encode the z's
+        for i in 0 .. z.len() {
+            z[i] = g.powm(&z[i], &p);
+        }
+
+        Obf { p, q, h, z, multi: true }
     }
 
     pub fn eval(&self, inp: &str) -> usize {
@@ -235,6 +272,14 @@ impl Obf {
                 t *= val;
                 t %= &self.p;
             }
+
+            for z in self.z.iter() {
+                if &t == z {
+                    return 1;
+                }
+            }
+            return 0;
+
         } else {
             pts = x.iter().enumerate().map(|(i, &x)| point!(i, x)).collect();
             for i in 0..n {
@@ -244,9 +289,10 @@ impl Obf {
                 t *= val;
                 t %= &self.p;
             }
+
+            (t == Mpz::from(1)) as usize
         }
 
-        (t == Mpz::from(1)) as usize
     }
 }
 
@@ -299,11 +345,14 @@ impl Obf {
         } else {
             writeln!(f, "single").unwrap();
         }
-        writeln!(f, "{}\n{}\n{}", self.h.len(), self.p, self.q).unwrap();
+        writeln!(f, "{}\n{}\n{}\n{}", self.h.len(), self.z.len(), self.p, self.q).unwrap();
         for i in 0..self.h.len() {
             for j in 0..2 {
                 writeln!(f, "{}", self.h[i][j]).unwrap();
             }
+        }
+        for z in self.z.iter() {
+            writeln!(f, "{}", z).unwrap();
         }
     }
 
@@ -323,6 +372,8 @@ impl Obf {
         };
         let n: usize = lines.next().expect("expected a line!")
             .parse().expect("expected line 1 to be a number in base 10!");
+        let nzs: usize = lines.next().expect("expected a line!")
+            .parse().expect("expected a number!");
         let p: Mpz = Mpz::from_str_radix(lines.next().expect("expected a line!"), 10)
             .expect("expected line 2 to be p in base 10!");
         let q: Mpz = Mpz::from_str_radix(lines.next().expect("expected a line!"), 10)
@@ -334,8 +385,13 @@ impl Obf {
                     .expect("expected line to be base 10!");
             }
         }
+        let mut z = Vec::with_capacity(nzs);
+        for i in 0..nzs {
+            z.push(Mpz::from_str_radix(lines.next().expect("expected a line!"), 10)
+                   .expect("expected line to be base 10!"));
+        }
         assert_eq!(lines.next(), None);
-        Obf { p, q, h, multi }
+        Obf { p, q, h, z, multi }
     }
 }
 
@@ -408,7 +464,7 @@ mod tests {
             f1.push((point!(n,1) + ctr, y));
             ctr += 1;
         }
-        println!("{:?}", f1);
+        eprintln!("{:?}", f1);
 
         let mut f2 = Vec::with_capacity(n);
         for i in 0..n {

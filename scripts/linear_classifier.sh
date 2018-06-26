@@ -8,10 +8,12 @@ ntests=0
 nbits=8
 verbose=""
 combine=""
+tests_only=""
 
 usage() {
     echo "$0 [options] [thresholds]"
     echo "    -t NUM    run NUM random tests"
+    echo "    -T        skip obfuscation, just run tests"
     echo "    -h        this message"
     echo "    -b        number of bits [$nbits]"
     echo "    -c        combine patterns"
@@ -28,6 +30,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -t*)
             ntests=${1#-t}
+            shift
+            ;;
+        -T)
+            tests_only=1
             shift
             ;;
         -b)
@@ -80,8 +86,11 @@ generate() {
     echo "$pats"
 }
 
-# generate wildcard obfuscation
-generate $@ | cargo run --release -- multimatch -
+if [[ ! $tests_only ]]; then 
+    echo "obfuscating..."
+    # generate wildcard obfuscation
+    generate $@ | cargo run --release -- multimatch -
+fi
 
 # run tests
 nfailed=0
