@@ -21,11 +21,12 @@ macro_rules! point {
 }
 
 macro_rules! multi_point {
-    ( $i:expr, $j:expr, $k:expr ) => {
-        (4*$i+2*$j+$k+1) as u64
+    ( $n:expr, $i:expr, $j:expr, $xi:expr, $xj:expr ) => {
+        (4*$n*$i + 4*$j + 2*$xi + $xj + 1) as u64
     };
 }
 
+const BIT_CHARS: [(usize, char); 2] = [(0,'0'), (1,'1')];
 
 pub fn get_primes(secparam: usize) -> (Mpz, Mpz) {
     match secparam {
@@ -90,56 +91,44 @@ impl Obf {
         Obf { p, q, h, multi: false }
     }
 
-    pub fn multimatch(pats_input: &[&str], secparam: usize) -> Self {
-        let n = pats_input[0].len();
-        eprintln!("n={}", n);
-        for subpat in pats_input {
-            if subpat.len() != n {
-                panic!("subpattern \"{}\" does not have length {}!", subpat, n);
-            }
-            if subpat.contains("*") {
-                eprintln!("warning: \"*\" is not fully supported in pattern {}!", subpat);
-            }
-        }
+    pub fn multimatch(pat_input: &str, secparam: usize) -> Self {
 
-        let pats: Vec<Vec<char>> = pats_input.iter().map(|&pat| pat.chars().collect()).collect();
+        let pat = AltPattern::new(pat_input);
+        let n = pat.len();
+
+        eprintln!("pat={} n={}", pat_input, n);
 
         let ref mut rng = rand::thread_rng();
         let (p, q) = get_primes(secparam);
         let g = Mpz::from(2);
 
-        let mut h: Vec<[Mpz; 4]> = vec![[Mpz::from(0), Mpz::from(0), Mpz::from(0), Mpz::from(0)]; n.pow(2)];
+        let ref mut f = rand_mpz_mod_vec(rng, &q, n.pow(2));
+        f[0] = Mpz::from(0);
+
+        let mut h: Vec<Vec<Mpz>> = vec![vec![Mpz::from(0), Mpz::from(0), Mpz::from(0), Mpz::from(0)]; n.pow(2)];
 
         for i in 0..n {
             for j in 0..n {
-                for pat in pats.iter() {
-
+                eprintln!("");
+                for &(x,xchar) in BIT_CHARS.iter() {
+                    for &(y,ychar) in BIT_CHARS.iter() {
+                        if pat.matches_both(i, xchar, j, ychar) {
+                            eprintln!("h[{}][{}] = F", n*i+j, 2*x+y);
+                            h[n*i+j][2*x+y] = g.powm(&poly_eval(f, &Mpz::from(multi_point!(n,i,j,x,y))), &p);
+                        } else {
+                            eprintln!("h[{}][{}] = $", n*i+j, 2*x+y);
+                            h[n*i+j][2*x+y] = rand_mpz_mod(rng, &p);
+                        }
+                    }
                 }
             }
         }
 
-        unimplemented!();
-
-        // for (i, elem) in pat.chars().enumerate() {
-        //     h.push([Mpz::from(0), Mpz::from(0)]);
-        //     for &j in [0,1].iter() {
-        //         let j_as_char = std::char::from_digit(j as u32, 10).unwrap();
-
-        //         if elem == j_as_char || elem == '*' {
-        //             let y = poly_eval(f, &Mpz::from(point!(i,j)));
-        //             h[i][j] = g.powm(&y, &p);
-        //         } else {
-        //             h[i][j] = rand_mpz_mod(rng, &p);
-        //         }
-        //     }
-        // }
-
-
-        // Obf { p, q, h, multi: true }
+        Obf { p, q, h, multi: true }
     }
 
     pub fn eval(&self, inp: &str) -> usize {
-        let n = if self.multi { self.h.len() / 2 } else { self.h.len() };
+        let n = if self.multi { (self.h.len() as f64).sqrt() as usize } else { self.h.len() };
         assert_eq!(inp.len(), n,
             "error: expected {}-bit input, but got {} bits!", n, inp.len());
 
@@ -148,22 +137,20 @@ impl Obf {
         }).collect();
 
         let mut t = Mpz::from(1);
-        let mut pts;
+
         if self.multi {
-            pts = Vec::with_capacity(2*n);
+            let mut pts = Vec::with_capacity(n.pow(2));
+            let mut order = Vec::with_capacity(n.pow(2));
             for i in 0..n {
-                pts.push(multi_point!(i, x[i], 0));
-                pts.push(multi_point!(i, x[i], 1));
+                for j in 0..n {
+                    order.push((i, j, pts.len() as u64));
+                    pts.push(multi_point!(n, i, j, x[i], x[j]));
+                }
             }
 
-            for i in 0..n {
-                let exp = lagrange_coef((2*i) as u64, 0, pts.as_slice(), &self.q);
-                let val = self.h[2*i][x[i]].powm(&exp, &self.p);
-                t *= val;
-                t %= &self.p;
-
-                let exp = lagrange_coef((2*i+1) as u64, 0, pts.as_slice(), &self.q);
-                let val = self.h[2*i+1][x[i]].powm(&exp, &self.p);
+            for (i, j, ix) in order.into_iter() {
+                let exp = lagrange_coef(ix, 0, pts.as_slice(), &self.q);
+                let val = self.h[n*i+j][2*x[i]+x[j]].powm(&exp, &self.p);
                 t *= val;
                 t %= &self.p;
             }
@@ -171,7 +158,7 @@ impl Obf {
             (t == Mpz::from(1)) as usize
 
         } else {
-            pts = x.iter().enumerate().map(|(i, &x)| point!(i, x)).collect();
+            let pts: Vec<u64> = x.iter().enumerate().map(|(i, &x)| point!(i, x)).collect();
             for i in 0..n {
                 // compute lagrange coeficient in the exponent group
                 let exp = lagrange_coef(i as u64, 0, pts.as_slice(), &self.q);
@@ -195,6 +182,7 @@ fn poly_eval(coefs: &Vec<Mpz>, x: &Mpz) -> Mpz {
     y
 }
 
+#[allow(dead_code)]
 fn lagrange_poly_eval(interp_at: u64, points: &[(u64, Mpz)], q: &Mpz) -> Mpz {
     let mut acc = Mpz::from(0);
     let xs: Vec<u64> = points.iter().map(|pt| pt.0).collect();
@@ -293,13 +281,41 @@ mod tests {
 
     #[test]
     fn test_multimatch() {
-        for _ in 0..16 {
-            let obf = Obf::multimatch(&["011000", "101100", "000000"], 128);
-            assert_eq!(obf.eval("011000"), 1);
-            assert_eq!(obf.eval("101100"), 1);
-            assert_eq!(obf.eval("101000"), 0);
-            assert_eq!(obf.eval("011100"), 0);
-        }
+        let obf = Obf::multimatch("1", 2048);
+        assert_eq!(obf.eval("1"), 1);
+        assert_eq!(obf.eval("0"), 0);
+
+        let obf = Obf::multimatch("01", 2048);
+        assert_eq!(obf.eval("01"), 1);
+        assert_eq!(obf.eval("10"), 0);
+        assert_eq!(obf.eval("00"), 0);
+        assert_eq!(obf.eval("11"), 0);
+
+        let obf = Obf::multimatch("(00|11)", 2048);
+        assert_eq!(obf.eval("00"), 1);
+        assert_eq!(obf.eval("11"), 1);
+        assert_eq!(obf.eval("01"), 0);
+        assert_eq!(obf.eval("10"), 0);
+
+        let obf = Obf::multimatch("(00|11|01)", 2048);
+        assert_eq!(obf.eval("00"), 1);
+        assert_eq!(obf.eval("11"), 1);
+        assert_eq!(obf.eval("01"), 1);
+        assert_eq!(obf.eval("10"), 0);
+
+        let obf = Obf::multimatch("(011000|101100|000000)", 2048);
+        assert_eq!(obf.eval("011000"), 1);
+        assert_eq!(obf.eval("101100"), 1);
+        assert_eq!(obf.eval("101000"), 0);
+        assert_eq!(obf.eval("011100"), 0);
+
+        let obf = Obf::multimatch("(0**|111)", 2048);
+        assert_eq!(obf.eval("000"), 1);
+        assert_eq!(obf.eval("001"), 1);
+        assert_eq!(obf.eval("100"), 0);
+        assert_eq!(obf.eval("101"), 0);
+        assert_eq!(obf.eval("111"), 1);
+
     }
 
     #[test]
@@ -344,7 +360,6 @@ mod tests {
             f1.push((point!(n,1) + ctr, y));
             ctr += 1;
         }
-        eprintln!("{:?}", f1);
 
         let mut f2 = Vec::with_capacity(n);
         for i in 0..n {

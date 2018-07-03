@@ -118,19 +118,19 @@ fn obf_main(pat_inp: &str, output_file: &str, secparam: usize) {
 }
 
 fn multimatch_main(pats_inp: &str, output_file: &str, secparam: usize) {
-    let mut pats;
+    let mut pat;
     if pats_inp == "-" {
-        pats = String::new();
+        pat = String::new();
         let stdin = std::io::stdin();
         let mut handle = stdin.lock();
-        handle.read_to_string(&mut pats).unwrap();
+        handle.read_to_string(&mut pat).unwrap();
     } else {
-        pats = pats_inp.to_string();
+        pat = pats_inp.to_string();
     }
 
-    for c in pats.chars() {
+    for c in pat.chars() {
         match c {
-            '\n' | '\r' | ' ' | '\t' | '0' | '1' | '*' => {}
+            '0' | '1' | '*' | '?' | '(' | ')' => {}
             _ => {
                 eprintln!("Error: unknown pattern character \"{}\"!", c);
                 exit(1);
@@ -138,9 +138,7 @@ fn multimatch_main(pats_inp: &str, output_file: &str, secparam: usize) {
         }
     }
 
-    let pats: Vec<&str> = pats.split_whitespace().collect();
-
-    let obf = Obf::multimatch(&pats, secparam);
+    let obf = Obf::multimatch(&pat, secparam);
 
     obf.to_file(output_file);
 }

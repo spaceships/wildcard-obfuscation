@@ -127,6 +127,10 @@ impl AltPattern {
         true
     }
 
+    pub fn len(&self) -> usize {
+        self.pat.iter().map(|e| e.len()).sum()
+    }
+
     pub fn matches_at(&self, index: usize, inp: char) -> bool {
         let mut cur = index;
         for elem in self.pat.iter() {
@@ -136,12 +140,15 @@ impl AltPattern {
             }
             return elem.matches_at(cur, inp);
         }
-        panic!("index >= pattern len");
+        panic!("index ({}) >= pattern len ({})", index, self.len());
     }
 
     pub fn same_alternative(&self, index1: usize, index2: usize) -> Option<(&PatternElem, usize, usize)> {
         if index1 > index2 {
-            return self.same_alternative(index2, index1);
+            match self.same_alternative(index2, index1) {
+                Some((elem, jp, ip)) => return Some((elem, ip, jp)),
+                None => return None,
+            }
         }
         let mut i = index1;
         let mut j = index2;
@@ -175,7 +182,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn it_works() {
+    fn test_matches() {
         let p = AltPattern::new("01");
         assert!(p.matches("01"));
         assert!(!p.matches("00"));
@@ -193,7 +200,28 @@ mod tests {
         assert!(!p.matches("101"));
         assert!(p.matches("111"));
         assert!(p.matches_at(1, '1'));
+
+        let p = AltPattern::new("(00|11|01)");
+        assert!(p.matches("00"));
+        assert!(p.matches("11"));
+        assert!(p.matches("01"));
+        assert!(!p.matches("10"));
+    }
+
+    #[test]
+    fn test_matches_both() {
+        let p = AltPattern::new("01");
+        assert!(p.matches_both(0,'0',1,'1'));
+        assert!(!p.matches_both(0,'1',1,'0'));
+
+        let p = AltPattern::new("(0**|111)");
         assert!(p.matches_both(0, '1', 2, '1'));
         assert!(!p.matches_both(0, '1', 2, '0'));
+
+        let p = AltPattern::new("(00|11|01)");
+        assert!(p.matches_both(0,'0',1,'0'));
+        assert!(p.matches_both(0,'1',1,'1'));
+        assert!(p.matches_both(0,'0',1,'1'));
+        assert!(!p.matches_both(0,'1',1,'0'));
     }
 }
