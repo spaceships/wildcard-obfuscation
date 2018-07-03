@@ -6,7 +6,7 @@ pub struct AltPattern {
 #[derive(Debug)]
 pub enum PatternElem {
     Static(Vec<char>),
-    Alt(Vec<Vec<char>>),
+    Alt { pats: Vec<Vec<char>>, len: usize },
 }
 
 impl PatternElem {
@@ -21,7 +21,7 @@ impl PatternElem {
                 true
             }
 
-            PatternElem::Alt(pats) => {
+            PatternElem::Alt { pats, .. } => {
                 'outer: for pat in pats.iter() {
                     for (&p,c) in pat.iter().zip(inp.chars()) {
                         if p != c && p != '?' {
@@ -32,6 +32,44 @@ impl PatternElem {
                 }
                 false
             }
+        }
+    }
+
+    pub fn matches_at(&self, index: usize, inp: char) -> bool {
+        match self {
+            PatternElem::Static(pat) => pat[index] == '?' || pat[index] == inp,
+
+            PatternElem::Alt { pats, .. } => {
+                for pat in pats.iter() {
+                    if pat[index] == '?' || pat[index] == inp {
+                        return true;
+                    }
+                }
+                false
+            }
+        }
+    }
+
+    pub fn matches_both(&self, i: usize, xi: char, j: usize, xj: char) -> bool {
+        match self {
+            PatternElem::Static(pat) =>
+                (pat[i] == '?' || pat[i] == xi) && (pat[j] == '?' || pat[j] == xj),
+
+            PatternElem::Alt { pats, .. } => {
+                for pat in pats.iter() {
+                    if (pat[i] == '?' || pat[i] == xi) && (pat[j] == '?' || pat[j] == xj) {
+                        return true;
+                    }
+                }
+                false
+            }
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            PatternElem::Static(pat) => pat.len(),
+            PatternElem::Alt { len, .. } => *len,
         }
     }
 }
@@ -61,8 +99,9 @@ impl AltPattern {
                 }
                 ')' => {
                     assert!(open_paren, "unmatched close paren");
+                    assert_eq!(save.len(), alt.last().unwrap().len());
                     alt.push(save.clone());
-                    pat.push(PatternElem::Alt(alt.clone()));
+                    pat.push(PatternElem::Alt { pats: alt.clone(), len: save.len() });
                     save.clear();
                     alt.clear();
                     open_paren = false;
@@ -87,6 +126,48 @@ impl AltPattern {
         }
         true
     }
+
+    pub fn matches_at(&self, index: usize, inp: char) -> bool {
+        let mut cur = index;
+        for elem in self.pat.iter() {
+            if cur >= elem.len() {
+                cur -= elem.len();
+                continue;
+            }
+            return elem.matches_at(cur, inp);
+        }
+        panic!("index >= pattern len");
+    }
+
+    pub fn same_alternative(&self, index1: usize, index2: usize) -> Option<(&PatternElem, usize, usize)> {
+        if index1 > index2 {
+            return self.same_alternative(index2, index1);
+        }
+        let mut i = index1;
+        let mut j = index2;
+        for elem in self.pat.iter() {
+            if i >= elem.len() {
+                i -= elem.len();
+                j -= elem.len();
+                continue;
+            }
+            if j < elem.len() {
+                return Some((elem, i, j));
+            } else {
+                return None;
+            }
+        }
+        None
+    }
+
+    pub fn matches_both(&self, i: usize, xi: char, j: usize, xj: char) -> bool {
+        if let Some((elem, ip, jp)) = self.same_alternative(i, j) {
+            elem.matches_both(ip, xi, jp, xj)
+        } else {
+            self.matches_at(i, xi) && self.matches_at(j, xj)
+        }
+    }
+
 }
 
 #[cfg(test)]
@@ -98,6 +179,7 @@ mod tests {
         let p = AltPattern::new("01");
         assert!(p.matches("01"));
         assert!(!p.matches("00"));
+        assert!(!p.matches_at(0, '1'));
 
         let p = AltPattern::new("(01|10)");
         assert!(p.matches("01"));
@@ -110,5 +192,8 @@ mod tests {
         assert!(!p.matches("100"));
         assert!(!p.matches("101"));
         assert!(p.matches("111"));
+        assert!(p.matches_at(1, '1'));
+        assert!(p.matches_both(0, '1', 2, '1'));
+        assert!(!p.matches_both(0, '1', 2, '0'));
     }
 }
