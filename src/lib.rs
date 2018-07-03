@@ -5,3 +5,4 @@ extern crate clap;
 
 pub mod protocol;
 pub mod rand_mpz;
+pub mod alt_pattern;
