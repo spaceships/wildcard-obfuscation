@@ -105,7 +105,9 @@ for ((i = 0; i < ntests; i++)); do
         fi
     done
     res=$(cargo run --quiet --release -- eval $inpstr)
-    if [[ $res -ne $should_be ]]; then
+    if [[ $res -eq $should_be && $verbose ]]; then
+        echo -e "${GREEN}test succeeded!${NC} input=$inpstr result=$res should_be=$should_be"
+    else
         nfailed=$(($nfailed + 1))
         echo -e "${RED}test failed!${NC} input=$inpstr result=$res should_be=$should_be"
     fi
