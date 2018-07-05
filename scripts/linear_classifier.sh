@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 NC='\033[0m' # No Color
@@ -104,17 +106,20 @@ for ((i = 0; i < ntests; i++)); do
             should_be=0
         fi
     done
+    [[ $verbose ]] && echo "test: $inpstr" >/dev/stderr
     res=$(cargo run --quiet --release -- eval $inpstr)
-    if [[ $res -eq $should_be && $verbose ]]; then
-        echo -e "${GREEN}test succeeded!${NC} input=$inpstr result=$res should_be=$should_be"
+    if [[ $res ]] && [[ $res -eq $should_be ]]; then
+        [[ $verbose ]] && echo -e "${GREEN}test succeeded!${NC} input=$inpstr result=$res should_be=$should_be"
     else
         nfailed=$(($nfailed + 1))
         echo -e "${RED}test failed!${NC} input=$inpstr result=$res should_be=$should_be"
     fi
 done
 
-if [[ $ntests -gt 0 && $nfailed -eq 0 ]]; then
-    echo -e "${GREEN}passed $ntests tests!$NC"
-else 
-    echo -e "${RED}failed $nfailed tests${NC}"
+if [[ $ntests -gt 0 ]]; then 
+    if [[ $nfailed -eq 0 ]]; then
+        echo -e "${GREEN}passed $ntests tests!$NC"
+    else 
+        echo -e "${RED}failed $nfailed tests${NC}"
+    fi
 fi

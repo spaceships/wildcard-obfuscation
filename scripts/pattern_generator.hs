@@ -12,7 +12,7 @@ import Data.Bits
 main = do
     (nbits, comb, args) <- processArgs (8, False, []) <$> getArgs
     let strs = genStrs nbits (map read args)
-    mapM putStrLn (if comb then combine strs else strs)
+    putStr $ "(" ++ intercalate "|" (if comb then combine strs else strs) ++ ")"
 
 processArgs :: (Int, Bool, [String]) -> [String] -> (Int, Bool, [String])
 processArgs t [] = t

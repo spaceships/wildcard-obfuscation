@@ -128,17 +128,19 @@ fn multimatch_main(pats_inp: &str, output_file: &str, secparam: usize) {
         pat = pats_inp.to_string();
     }
 
-    for c in pat.chars() {
+    let mut cleaned_pat = String::new();
+    for (i,c) in pat.chars().enumerate() {
         match c {
-            '0' | '1' | '*' | '?' | '(' | ')' => {}
+            '0' | '1' | '*' | '?' | '(' | ')' | '|' => cleaned_pat.push(c),
+            '\n' | '\r' | ' ' => {}
             _ => {
-                eprintln!("Error: unknown pattern character \"{}\"!", c);
+                eprintln!("Error: unknown pattern character at {}/{}", i, pat.len());
                 exit(1);
             }
         }
     }
 
-    let obf = Obf::multimatch(&pat, secparam);
+    let obf = Obf::multimatch(&cleaned_pat, secparam);
 
     obf.to_file(output_file);
 }
