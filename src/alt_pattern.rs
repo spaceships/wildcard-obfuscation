@@ -99,7 +99,9 @@ impl AltPattern {
                 }
                 ')' => {
                     assert!(open_paren, "unmatched close paren");
-                    assert_eq!(save.len(), alt.last().unwrap().len());
+                    if !alt.is_empty() {
+                        assert_eq!(save.len(), alt[0].len(), "alternative with different length: {:?}", save);
+                    }
                     alt.push(save.clone());
                     pat.push(PatternElem::Alt { pats: alt.clone(), len: save.len() });
                     save.clear();
