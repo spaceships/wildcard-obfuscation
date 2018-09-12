@@ -96,6 +96,7 @@ fi
 
 # run tests
 nfailed=0
+total_time=0
 for ((i = 0; i < ntests; i++)); do 
     inpstr=""
     should_be=1
@@ -107,7 +108,12 @@ for ((i = 0; i < ntests; i++)); do
         fi
     done
     [[ $verbose ]] && echo "test: $inpstr" >/dev/stderr
+
+    start=$(date +%s)
     res=$(cargo run --quiet --release -- eval $inpstr)
+    end=$(date +%s)
+    total_time=$((total_time + (end - start)))
+
     if [[ $res ]] && [[ $res -eq $should_be ]]; then
         [[ $verbose ]] && echo -e "${GREEN}test succeeded!${NC} input=$inpstr result=$res should_be=$should_be"
     else
@@ -123,3 +129,5 @@ if [[ $ntests -gt 0 ]]; then
         echo -e "${RED}failed $nfailed tests${NC}"
     fi
 fi
+
+echo "eval took $((total_time / ntests))s on average"
