@@ -12,7 +12,7 @@ use std::char::from_digit;
 use std::time::Duration;
 
 const N: usize = 64;
-const SECPARAM: usize = 2048;
+const SECPARAM: usize = 1024;
 
 fn rand_inp<R: Rng>(rng: &mut R, n: usize) -> String {
     (0..n).map(|_| from_digit(rng.gen_range(0,2), 10).unwrap() ).collect()
@@ -36,7 +36,7 @@ fn bench_obf(c: &mut Criterion) {
         let rng = &mut thread_rng();
         b.iter(|| {
             let pat = rand_pat(rng, N);
-            let obf = WildcardObfuscation::encode(&pat, SECPARAM);
+            let obf = Obf::encode(&pat, SECPARAM);
             criterion::black_box(obf);
         });
     });
@@ -46,7 +46,7 @@ fn bench_eval(c: &mut Criterion) {
     c.bench_function("eval", move |b| {
         let rng = &mut thread_rng();
         let pat = rand_pat(rng, N);
-        let obf = WildcardObfuscation::encode(&pat, SECPARAM);
+        let obf = Obf::encode(&pat, SECPARAM);
         b.iter(|| {
             let inp = rand_inp(rng, N);
             let res = obf.eval(&inp);
