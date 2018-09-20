@@ -12,7 +12,7 @@ pub struct Obf {
     q: Mpz,             // prime modulus for the exponent
     h: Vec<Vec<Mpz>>,   // h_ij encodings
     n: usize,
-    multi: bool,
+    l: usize,
 }
 
 macro_rules! point {
@@ -101,7 +101,7 @@ impl Obf {
                 }
             }
         }
-        Obf { p, q, h, n, multi: false }
+        Obf { p, q, h, n, l:0 }
     }
 
     pub fn multimatch(pat_input: &str, secparam: usize) -> Self {
@@ -109,39 +109,42 @@ impl Obf {
         let pat = AltPattern::new(pat_input);
         let n = pat.len();
 
+        let l = pat.max_alt_len();
+
         // eprintln!("pat={} n={}", pat_input, n);
 
         let ref mut rng = rand::thread_rng();
         let (p, q) = get_primes(secparam);
         let g = Mpz::from(2);
 
-        let ref mut f = rand_mpz_mod_vec(rng, &q, n.pow(2));
+        let ref mut f = rand_mpz_mod_vec(rng, &q, n*l);
         f[0] = Mpz::from(0);
 
-        let mut h: Vec<Vec<Mpz>> = vec![vec![Mpz::from(0), Mpz::from(0), Mpz::from(0), Mpz::from(0)]; n.pow(2)];
+        let mut h: Vec<Vec<Mpz>> = vec![vec![Mpz::from(0), Mpz::from(0), Mpz::from(0), Mpz::from(0)]; n*l];
 
         for i in 0..n {
-            for j in 0..n {
+            for j in 0..l {
                 // eprintln!("");
                 for &(x,xchar) in BIT_CHARS.iter() {
                     for &(y,ychar) in BIT_CHARS.iter() {
                         if pat.matches_both(i, xchar, j, ychar) {
                             // eprintln!("h[{}][{}] = F", n*i+j, 2*x+y);
-                            h[n*i+j][2*x+y] = g.powm(&poly_eval(f, &Mpz::from(multi_point!(n,i,j,x,y))), &p);
+                            h[l*i+j][2*x+y] = g.powm(&poly_eval(f, &Mpz::from(multi_point!(n,i,j,x,y))), &p);
                         } else {
                             // eprintln!("h[{}][{}] = $", n*i+j, 2*x+y);
-                            h[n*i+j][2*x+y] = rand_mpz_mod(rng, &p);
+                            h[l*i+j][2*x+y] = rand_mpz_mod(rng, &p);
                         }
                     }
                 }
             }
         }
 
-        Obf { p, q, h, n, multi: true }
+        Obf { p, q, h, n, l }
     }
 
     pub fn eval(&self, inp: &str) -> usize {
         let n = self.n;
+        let l = self.l;
         assert_eq!(inp.len(), n,
             "error: expected {}-bit input, but got {} bits!", n, inp.len());
 
@@ -151,11 +154,11 @@ impl Obf {
 
         let mut t = Mpz::from(1);
 
-        if self.multi {
-            let mut pts = Vec::with_capacity(n.pow(2));
-            let mut order = Vec::with_capacity(n.pow(2));
+        if l > 0 {
+            let mut pts   = Vec::with_capacity(n*l);
+            let mut order = Vec::with_capacity(n*l);
             for i in 0..n {
-                for j in 0..n {
+                for j in 0..l {
                     order.push((i, j, pts.len() as u64));
                     pts.push(multi_point!(n, i, j, x[i], x[j]));
                 }
@@ -163,7 +166,7 @@ impl Obf {
 
             for (i, j, ix) in order.into_iter() {
                 let exp = lagrange_coef(ix, 0, pts.as_slice(), &self.q);
-                let val = self.h[n*i+j][2*x[i]+x[j]].powm(&exp, &self.p);
+                let val = self.h[l*i+j][2*x[i]+x[j]].powm(&exp, &self.p);
                 t *= val;
                 t %= &self.p;
             }
@@ -231,18 +234,14 @@ impl Obf {
     }
 
     pub fn write<W: Write>(&self, f: &mut W) {
-        if self.multi {
-            writeln!(f, "multi").unwrap();
-        } else {
-            writeln!(f, "single").unwrap();
-        }
+        writeln!(f, "{}", self.l);
         writeln!(f, "{}\n{}\n{}", self.n, self.p, self.q).unwrap();
-        if self.multi {
+        if self.l > 0 {
             for i in 0..self.n {
-                for j in 0..self.n {
+                for j in 0..self.l {
                     for xi in 0..2 {
                         for xj in 0..2 {
-                            writeln!(f, "{}", self.h[self.n*i + j][2*xi + xj]).unwrap();
+                            writeln!(f, "{}", self.h[self.l*i + j][2*xi + xj]).unwrap();
                         }
                     }
                 }
@@ -265,11 +264,8 @@ impl Obf {
 
     pub fn read(contents: &str) -> Self {
         let mut lines = contents.lines();
-        let multi = match lines.next().expect("expected a line!") {
-            "multi" => true,
-            "single" => false,
-            other => panic!("unknown value: {}!", other),
-        };
+        let l: usize = lines.next().expect("expected a line!")
+            .parse().expect("expected line 1 to be a number in base 10!");
         let n: usize = lines.next().expect("expected a line!")
             .parse().expect("expected line 1 to be a number in base 10!");
         let p: Mpz = Mpz::from_str_radix(lines.next().expect("expected a line!"), 10)
@@ -277,13 +273,13 @@ impl Obf {
         let q: Mpz = Mpz::from_str_radix(lines.next().expect("expected a line!"), 10)
             .expect("expected line 3 to be q in base 10!");
         let mut h;
-        if multi {
-            h = vec![vec![Mpz::from(0), Mpz::from(0), Mpz::from(0), Mpz::from(0)]; n.pow(2)];
+        if l > 0 {
+            h = vec![vec![Mpz::from(0), Mpz::from(0), Mpz::from(0), Mpz::from(0)]; n*l];
             for i in 0..n {
-                for j in 0..n {
+                for j in 0..l {
                     for xi in 0..2 {
                         for xj in 0..2 {
-                            h[n*i+j][2*xi+xj] = Mpz::from_str_radix(lines.next().expect("expected a line!"), 10)
+                            h[l*i+j][2*xi+xj] = Mpz::from_str_radix(lines.next().expect("expected a line!"), 10)
                                 .expect("expected line to be base 10!");
                         }
                     }
@@ -299,7 +295,7 @@ impl Obf {
             }
         }
         assert_eq!(lines.next(), None);
-        Obf { p, q, h, n, multi }
+        Obf { p, q, h, n, l }
     }
 }
 

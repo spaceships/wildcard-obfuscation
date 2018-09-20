@@ -133,6 +133,10 @@ impl AltPattern {
         self.pat.iter().map(|e| e.len()).sum()
     }
 
+    pub fn max_alt_len(&self) -> usize {
+        self.pat.iter().map(|e| e.len()).max().unwrap_or(0)
+    }
+
     pub fn matches_at(&self, index: usize, inp: char) -> bool {
         let mut cur = index;
         for elem in self.pat.iter() {
