@@ -24,13 +24,7 @@ fn main() {
                          .help("output the obfuscation to FILE")
                          .value_name("FILE")
                          .short("o")
-                         .default_value("wildcard.obf"))
-                    .arg(Arg::with_name("secparam")
-                         .help("size of primes")
-                         .value_name("NUM")
-                         .default_value("2048")
-                         .short("s")
-                         .long("secparam")))
+                         .default_value("wildcard.obf")))
 
         .subcommand(SubCommand::with_name("multimatch")
                     .display_order(2)
@@ -43,13 +37,7 @@ fn main() {
                          .help("output the obfuscation to FILE")
                          .value_name("FILE")
                          .short("o")
-                         .default_value("wildcard.obf"))
-                    .arg(Arg::with_name("secparam")
-                         .help("size of primes")
-                         .value_name("NUM")
-                         .default_value("2048")
-                         .short("s")
-                         .long("secparam")))
+                         .default_value("wildcard.obf")))
 
         .subcommand(SubCommand::with_name("eval")
                     .display_order(3)
@@ -69,17 +57,13 @@ fn main() {
         ("obf", Some(matches)) => {
             let pat = matches.value_of("PATTERN").expect("PATTERN required!");
             let output = matches.value_of("output_file").unwrap();
-            let secparam = matches.value_of("secparam").unwrap().parse()
-                .expect("integer security parameter expected!");
-            obf_main(pat, output, secparam);
+            obf_main(pat, output);
         }
 
         ("multimatch", Some(matches)) => {
             let pat = matches.value_of("PATTERNS").expect("PATTERNS required!");
             let output = matches.value_of("output_file").unwrap();
-            let secparam = matches.value_of("secparam").unwrap().parse()
-                .expect("integer security parameter expected!");
-            multimatch_main(pat, output, secparam);
+            multimatch_main(pat, output);
         }
 
         ("eval", Some(matches)) => {
@@ -91,7 +75,7 @@ fn main() {
     }
 }
 
-fn obf_main(pat_inp: &str, output_file: &str, secparam: usize) {
+fn obf_main(pat_inp: &str, output_file: &str) {
     let mut pat;
     if pat_inp == "-" {
         pat = String::new();
@@ -112,12 +96,12 @@ fn obf_main(pat_inp: &str, output_file: &str, secparam: usize) {
         }
     }
 
-    let obf = Obf::encode(&pat, secparam);
+    let obf = Obf::encode(&pat);
 
     obf.to_file(output_file);
 }
 
-fn multimatch_main(pats_inp: &str, output_file: &str, secparam: usize) {
+fn multimatch_main(pats_inp: &str, output_file: &str) {
     let mut pat;
     if pats_inp == "-" {
         pat = String::new();
@@ -140,7 +124,7 @@ fn multimatch_main(pats_inp: &str, output_file: &str, secparam: usize) {
         }
     }
 
-    let obf = Obf::multimatch(&cleaned_pat, secparam);
+    let obf = Obf::multimatch(&cleaned_pat);
 
     obf.to_file(output_file);
 }
