@@ -5,13 +5,17 @@ use std;
 use std::io::{Read, Write, BufWriter};
 use std::fs::File;
 
-use curve25519_dalek::ristretto::{RistrettoPoint, CompressedRistretto};
+use curve25519_dalek::ristretto::{RistrettoPoint, CompressedRistretto, RistrettoBasepointTable};
 use curve25519_dalek::scalar::Scalar;
-use curve25519_dalek::traits::Identity;
-use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
+use curve25519_dalek::traits::{Identity, VartimeMultiscalarMul};
+use curve25519_dalek::constants::RISTRETTO_BASEPOINT_TABLE;
 
 type Enc = RistrettoPoint;
-const G: Enc = RISTRETTO_BASEPOINT_POINT;
+const G: RistrettoBasepointTable = RISTRETTO_BASEPOINT_TABLE;
+
+fn id() -> RistrettoPoint {
+    RistrettoPoint::identity()
+}
 
 pub struct Obf {
     h: Vec<Vec<Enc>>,   // h_ij encodings
@@ -49,12 +53,12 @@ impl Obf {
         // create the h_ij encodings
         let mut h = Vec::with_capacity(pat.len());
         for (i, elem) in pat.chars().enumerate() {
-            h.push(vec![G.clone(), G.clone()]);
+            h.push(vec![id(), id()]);
             for &j in [0,1].iter() {
                 let j_as_char = std::char::from_digit(j as u32, 10).unwrap();
 
                 if elem == j_as_char || elem == '*' {
-                    h[i][j] = G * poly_eval(f, &Scalar::from(point!(i,j) as u64));
+                    h[i][j] = &G * &poly_eval(f, &Scalar::from(point!(i,j) as u64));
                 } else {
                     h[i][j] = Enc::random(rng);
                 }
@@ -75,14 +79,14 @@ impl Obf {
         let ref mut f = rand_scalar_vec(rng, n*l);
         f[0] = Scalar::zero();
 
-        let mut h = vec![vec![G.clone(), G.clone(), G.clone(), G.clone()]; n*l];
+        let mut h = vec![vec![id(), id(), id(), id()]; n*l];
 
         for i in 0..n {
             for j in 0..l {
                 for &(x,xchar) in BIT_CHARS.iter() {
                     for &(y,ychar) in BIT_CHARS.iter() {
                         if pat.matches_both(i, xchar, j, ychar) {
-                            h[l*i+j][2*x+y] = G * poly_eval(f, &Scalar::from(multi_point!(n,i,j,x,y) as u64));
+                            h[l*i+j][2*x+y] = &G * &poly_eval(f, &Scalar::from(multi_point!(n,i,j,x,y) as u64));
                         } else {
                             h[l*i+j][2*x+y] = Enc::random(rng);
                         }
@@ -104,8 +108,6 @@ impl Obf {
             c.to_digit(2).expect("expected a binary digit!") as usize
         }).collect();
 
-        let mut t = RistrettoPoint::identity();
-
         if l > 0 {
             let mut pts   = Vec::with_capacity(n*l);
             let mut order = Vec::with_capacity(n*l);
@@ -116,24 +118,23 @@ impl Obf {
                 }
             }
 
+            let mut scalars = Vec::new();
+            let mut encs = Vec::new();
             for (i, j, ix) in order.into_iter() {
-                let exp = lagrange_coef(ix, 0, pts.as_slice());
-                let val = self.h[l*i+j][2*x[i]+x[j]] * &exp;
-                t += val;
+                scalars.push(lagrange_coef(ix, 0, pts.as_slice()));
+                encs.push(self.h[l*i+j][2*x[i]+x[j]]);
             }
+            let res = RistrettoPoint::vartime_multiscalar_mul(scalars.iter(), encs.iter());
 
-            (t == RistrettoPoint::identity()) as usize
+            (res == RistrettoPoint::identity()) as usize
 
         } else {
             let pts: Vec<usize> = x.iter().enumerate().map(|(i, &x)| point!(i, x)).collect();
-            for i in 0..n {
-                // compute lagrange coeficient in the exponent group
-                let exp = lagrange_coef(i, 0, pts.as_slice());
-                let val = self.h[i][x[i]] * exp;
-                t += val;
-            }
+            let scalars = (0..n).map(|i| lagrange_coef(i, 0, pts.as_slice()));
+            let encs = (0..n).map(|i| self.h[i][x[i]]);
+            let res = RistrettoPoint::vartime_multiscalar_mul(scalars, encs);
 
-            (t == RistrettoPoint::identity()) as usize
+            (res == RistrettoPoint::identity()) as usize
         }
 
     }
@@ -220,7 +221,7 @@ impl Obf {
             .parse().expect("expected line 1 to be a number in base 10!");
         let mut h;
         if l > 0 {
-            h = vec![vec![G.clone(), G.clone(), G.clone(), G.clone()]; n*l];
+            h = vec![vec![id(), id(), id(), id()]; n*l];
             for i in 0..n {
                 for j in 0..l {
                     for xi in 0..2 {
@@ -235,7 +236,7 @@ impl Obf {
                 }
             }
         } else {
-            h = vec![vec![G.clone(), G.clone()]; n];
+            h = vec![vec![id(), id()]; n];
             for i in 0..n {
                 for j in 0..2 {
                     let s = lines.next().expect("expected a line!");
@@ -314,7 +315,7 @@ mod tests {
         for _ in 0..16 {
             let x = Scalar::random(rng);
             let y = Scalar::random(rng);
-            assert_eq!(G*x + G*y, G*(x+y));
+            assert_eq!(&G*&x + &G*&y, &G*&(x+y));
         }
     }
 
@@ -355,9 +356,9 @@ mod tests {
                 xs.push(x);
                 ys.push(y);
             }
-            let mut acc = (G * ys[0]) * lagrange_coef(0, 0, xs.as_slice());
+            let mut acc = (&G * &ys[0]) * lagrange_coef(0, 0, xs.as_slice());
             for i in 1..n {
-                acc += (G * ys[i]) * lagrange_coef(i, 0, xs.as_slice());
+                acc += (&G * &ys[i]) * lagrange_coef(i, 0, xs.as_slice());
             }
             assert_eq!(acc, RistrettoPoint::identity());
         }
