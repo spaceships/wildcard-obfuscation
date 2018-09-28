@@ -25,15 +25,15 @@ args=()
 while [[ $# -gt 0 ]]; do
     case $1 in
         -n)  len=$2; shift; shift;;
-        -n*) len=${1#-t}; shift;;
+        -n*) len=${1#-n}; shift;;
         -a)  alt_len=$2; shift; shift;;
-        -a*) alt_len=${1#-t}; shift;;
+        -a*) alt_len=${1#-a}; shift;;
         -A)  alt_num=$2; shift; shift;;
-        -A*) alt_num=${1#-t}; shift;;
+        -A*) alt_num=${1#-A}; shift;;
         -t)  n_obf_tests=$2; shift; shift;;
         -t*) n_obf_tests=${1#-t}; shift;;
         -T)  n_eval_tests=$2; shift; shift;;
-        -T*) n_eval_tests=${1#-t}; shift;;
+        -T*) n_eval_tests=${1#-T}; shift;;
         -h | --help)
             usage
             exit 0
@@ -109,4 +109,4 @@ done
 
 echo "obf  took $((total_obf_time / n_obf_tests))ms on average"
 echo "eval took $((total_eval_time / (n_obf_tests * n_eval_tests)))ms on average"
-echo "obf size $(du -k wildcard.obf)kb"
+echo "obf size $(du -k wildcard.obf | awk '{print $1}')kb"
