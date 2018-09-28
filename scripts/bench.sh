@@ -7,16 +7,12 @@ GREEN='\033[0;32m'
 NC='\033[0m' # No Color
 
 len=8
-alt_len=2
-alt_num=2
 n_obf_tests=4
 n_eval_tests=2
 
 usage() {
-    echo "$0 [options]"
+    echo "$(basename $0) [options]"
     echo "    -n NUM    total length of pattern/input [$len]"
-    echo "    -a NUM    length of alternative patterns [$alt_len]"
-    echo "    -A NUM    number of alternatives in each bracket [$alt_num]"
     echo "    -t NUM    number of obfuscation tests to run [$n_obf_tests]"
     echo "    -T NUM    number of evaluation tests to run per obfucation [$n_eval_tests]"
 }
@@ -25,15 +21,11 @@ args=()
 while [[ $# -gt 0 ]]; do
     case $1 in
         -n)  len=$2; shift; shift;;
-        -n*) len=${1#-t}; shift;;
-        -a)  alt_len=$2; shift; shift;;
-        -a*) alt_len=${1#-t}; shift;;
-        -A)  alt_num=$2; shift; shift;;
-        -A*) alt_num=${1#-t}; shift;;
+        -n*) len=${1#-n}; shift;;
         -t)  n_obf_tests=$2; shift; shift;;
         -t*) n_obf_tests=${1#-t}; shift;;
         -T)  n_eval_tests=$2; shift; shift;;
-        -T*) n_eval_tests=${1#-t}; shift;;
+        -T*) n_eval_tests=${1#-T}; shift;;
         -h | --help)
             usage
             exit 0
@@ -56,19 +48,12 @@ if [[ $# -ne 0 ]]; then
     exit 1
 fi
 
-echo "parameters: len=$len alt_len=$alt_len alt_num=$alt_num n_obf_tests=$n_obf_tests n_eval_tests=$n_eval_tests"
+echo "parameters: len=$len n_obf_tests=$n_obf_tests n_eval_tests=$n_eval_tests"
 
-# generate a random disjunction based on the parameters
+# generate a random pattern with no wildcards
 function rand_pat() {
-    for ((i = 0; i < len; i += alt_len)); do
-        echo -n "("
-        for ((j=0; j < alt_num; j++)); do
-            for ((k=0; k < alt_len; k++)); do
-                echo -n $((RANDOM % 2))
-            done
-            [[ $j -lt $((alt_num-1)) ]] && echo -n "|"
-        done
-        echo -n ")"
+    for ((i = 0; i < len; i += 1)); do
+        echo -n $((RANDOM % 2))
     done
 }
 
@@ -91,10 +76,10 @@ total_obf_time=0
 total_eval_time=0
 for ((t=0; t<n_obf_tests; t++)); do
     pat=$(rand_pat)
-    echo -e "${GREEN}test $t${NC} $pat"
+    echo -e "${GREEN}[test $((t+1))]${NC} pattern=$pat"
 
     start=$(ms)
-    cargo run --release --quiet -- multimatch $pat    
+    cargo run --release --quiet -- obf $pat    
     end=$(ms)
     total_obf_time=$((total_obf_time + (end - start)))
 
@@ -109,4 +94,4 @@ done
 
 echo "obf  took $((total_obf_time / n_obf_tests))ms on average"
 echo "eval took $((total_eval_time / (n_obf_tests * n_eval_tests)))ms on average"
-echo "obf size $(du -k wildcard.obf)kb"
+echo "obf  size $(du -k wildcard.obf | awk '{print $1}')kb"

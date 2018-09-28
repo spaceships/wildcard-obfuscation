@@ -11,7 +11,7 @@ use rand::{thread_rng, Rng};
 use std::char::from_digit;
 use std::time::Duration;
 
-const N: usize = 64;
+const N: usize = 1024;
 const SECPARAM: usize = 1024;
 
 fn rand_inp<R: Rng>(rng: &mut R, n: usize) -> String {

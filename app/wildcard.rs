@@ -28,7 +28,7 @@ fn main() {
                     .arg(Arg::with_name("secparam")
                          .help("size of primes")
                          .value_name("NUM")
-                         .default_value("2048")
+                         .default_value("1024")
                          .short("s")
                          .long("secparam")))
 
@@ -47,7 +47,7 @@ fn main() {
                     .arg(Arg::with_name("secparam")
                          .help("size of primes")
                          .value_name("NUM")
-                         .default_value("2048")
+                         .default_value("1024")
                          .short("s")
                          .long("secparam")))
 
