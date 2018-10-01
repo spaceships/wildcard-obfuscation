@@ -11,6 +11,7 @@ alt_len=2
 alt_num=2
 n_obf_tests=4
 n_eval_tests=2
+plaintext=""
 
 usage() {
     echo "$0 [options]"
@@ -19,6 +20,7 @@ usage() {
     echo "    -A NUM    number of alternatives in each bracket [$alt_num]"
     echo "    -t NUM    number of obfuscation tests to run [$n_obf_tests]"
     echo "    -T NUM    number of evaluation tests to run per obfucation [$n_eval_tests]"
+    echo "    -P        use perl instead of obfuscation"
 }
 
 args=()
@@ -34,6 +36,7 @@ while [[ $# -gt 0 ]]; do
         -t*) n_obf_tests=${1#-t}; shift;;
         -T)  n_eval_tests=$2; shift; shift;;
         -T*) n_eval_tests=${1#-T}; shift;;
+        -P) plaintext=1; shift;;
         -h | --help)
             usage
             exit 0
@@ -83,8 +86,10 @@ function ms() {
 }
 
 # make sure it is built
-echo "building..."
-cargo build --release
+if [[ ! $plaintext ]]; then
+    echo "building..."
+    cargo build --release
+fi
 
 # run benchmarks
 total_obf_time=0
@@ -93,20 +98,28 @@ for ((t=0; t<n_obf_tests; t++)); do
     pat=$(rand_pat)
     echo -e "${GREEN}test $t${NC} $pat"
 
-    start=$(ms)
-    cargo run --release --quiet -- multimatch $pat    
-    end=$(ms)
-    total_obf_time=$((total_obf_time + (end - start)))
+    if [[ ! $plaintext ]]; then
+        start=$(ms)
+        cargo run --release --quiet -- multimatch $pat    
+        end=$(ms)
+        total_obf_time=$((total_obf_time + (end - start)))
+    fi
 
     for ((i=0; i<n_eval_tests; i++)); do
         inp=$(rand_input)
-        start=$(ms)
-        cargo run --release --quiet -- eval $inp >/dev/null
-        end=$(ms)
+        if [[ $plaintext ]]; then
+            start=$(ms)
+            perl -E "print 'match' if /$pat/" <<< $inp
+            end=$(ms)
+        else
+            start=$(ms)
+            cargo run --release --quiet -- eval $inp >/dev/null
+            end=$(ms)
+        fi
         total_eval_time=$((total_eval_time + (end - start)))
     done
 done
 
-echo "obf  took $((total_obf_time / n_obf_tests))ms on average"
+[[ ! $plaintext ]] && echo "obf  took $((total_obf_time / n_obf_tests))ms on average"
 echo "eval took $((total_eval_time / (n_obf_tests * n_eval_tests)))ms on average"
-echo "obf size $(du -k wildcard.obf | awk '{print $1}')kb"
+[[ ! $plaintext ]] && echo "obf size $(du -k wildcard.obf | awk '{print $1}')kb"
